@@ -1,23 +1,92 @@
-local ConfirmBox  = require("ui/widget/confirmbox")
-local Device      = require("device")
-local InfoMessage = require("ui/widget/infomessage")
-local Menu        = require("ui/widget/menu")
-local UIManager   = require("ui/uimanager")
-local _           = require("gettext")
+local ButtonDialog = require("ui/widget/buttondialog")
+local ConfirmBox   = require("ui/widget/confirmbox")
+local Device       = require("device")
+local InfoMessage  = require("ui/widget/infomessage")
+local Menu         = require("ui/widget/menu")
+local UIManager    = require("ui/uimanager")
+local _            = require("gettext")
 
 local Screen = Device.screen
 
 local SettingsPanel = Menu:extend{
     name = "flowread_settings",
     is_borderless = true,
+    is_popout = false,
 }
 
 local function boolLabel(v)
     return v and _("On") or _("Off")
 end
 
+---Short summary for the settings row (how many smart-pacing rules are on).
+local function pacingSummary(s)
+    local n = (s:get("pacing_long_words") and 1 or 0)
+        + (s:get("pacing_complexity") and 1 or 0)
+        + (s:get("pacing_punctuation") and 1 or 0)
+    if n == 0 then return _("Off") end
+    if n == 3 then return _("All on") end
+    return string.format("%d/3", n)
+end
+
+function SettingsPanel:_openPacingDialog()
+    local s = self.settings
+    local panel = self
+    local dialog
+
+    local function reopen()
+        UIManager:close(dialog)
+        panel:_openPacingDialog()
+    end
+
+    dialog = ButtonDialog:new{
+        title = _("Optional slowdowns: long words, complex words, punctuation. Off = steady speed."),
+        tap_close_callback = function()
+            panel:_refresh()
+        end,
+        buttons = {
+            {
+                {
+                    text = _("Long words (>8 letters)") .. ": " .. boolLabel(s:get("pacing_long_words")),
+                    callback = function()
+                        s:set("pacing_long_words", not s:get("pacing_long_words"))
+                        reopen()
+                    end,
+                },
+            },
+            {
+                {
+                    text = _("Complex words (more syllables)") .. ": " .. boolLabel(s:get("pacing_complexity")),
+                    callback = function()
+                        s:set("pacing_complexity", not s:get("pacing_complexity"))
+                        reopen()
+                    end,
+                },
+            },
+            {
+                {
+                    text = _("Punctuation pauses") .. ": " .. boolLabel(s:get("pacing_punctuation")),
+                    callback = function()
+                        s:set("pacing_punctuation", not s:get("pacing_punctuation"))
+                        reopen()
+                    end,
+                },
+            },
+            {
+                {
+                    text = _("Done"),
+                    callback = function()
+                        UIManager:close(dialog)
+                        panel:_refresh()
+                    end,
+                },
+            },
+        },
+    }
+    UIManager:show(dialog)
+end
+
 function SettingsPanel:init()
-    self.title = _("FlowRead Settings")
+    self.title = _("Settings")
     self.width = Screen:getWidth()
     self.height = Screen:getHeight()
     self.item_table = self:_buildItems()
@@ -48,7 +117,7 @@ function SettingsPanel:_buildItems()
         mandatory = _("Help"),
         callback = function()
             UIManager:show(InfoMessage:new{
-                text = _("Start:\nTap a chapter to browse from there\nTap any preview word to start there\n\nReader:\nTap main area: play/pause\nHeader left: settings\nHeader right: exit\nDouble tap: exit\nBottom row: slower WPM — browse — faster WPM\nLong-press: settings\nSwipe up/down: WPM (optional)\nSwipe left/right: jump words while playing, or browse when paused\n\nPreview:\nTap word: set current word\nFooter left/right: prev/next page\nFooter center or header Back: return"),
+                text = _("Start:\nTap a chapter to browse from there\nTap any preview word to start there\n\nReader:\nTap main area: play/pause\nHeader left: settings\nHeader right: exit\nDouble tap: exit\nBottom row: slower WPM — browse — faster WPM\nLong-press: settings\nSwipe up/down: WPM (optional)\nSwipe left/right: jump words while playing, or browse when paused\n\nPreview:\nHeader right Overview: open Start Reading (chapters, resume, …)\nTap word: set current word\nFooter left/right: prev/next page\nFooter center or header Back: return"),
                 timeout = 8,
             })
         end,
@@ -165,34 +234,12 @@ function SettingsPanel:_buildItems()
     end,
     })
 
-    -- Pacing: long words
     table.insert(items, {
-        text = _("Pacing: long words"),
-        mandatory = boolLabel(s:get("pacing_long_words")),
+        text = _("Pacing"),
+        mandatory = pacingSummary(s),
         callback = function()
-        s:set("pacing_long_words", not s:get("pacing_long_words"))
-        self:_refresh()
-    end,
-    })
-
-    -- Pacing: complexity
-    table.insert(items, {
-        text = _("Pacing: complex words"),
-        mandatory = boolLabel(s:get("pacing_complexity")),
-        callback = function()
-        s:set("pacing_complexity", not s:get("pacing_complexity"))
-        self:_refresh()
-    end,
-    })
-
-    -- Pacing: punctuation
-    table.insert(items, {
-        text = _("Pacing: punctuation"),
-        mandatory = boolLabel(s:get("pacing_punctuation")),
-        callback = function()
-        s:set("pacing_punctuation", not s:get("pacing_punctuation"))
-        self:_refresh()
-    end,
+            self:_openPacingDialog()
+        end,
     })
 
     -- Books folder

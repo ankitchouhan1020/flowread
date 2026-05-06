@@ -260,10 +260,11 @@ function RSVPScreen:_paintWord(bb, W, area_y, area_h, word_info)
         local guide_h   = math.floor(font_pt * 0.35)
         local guide_gap = 6
         local cx = anchor_x + math.floor(orp_w / 2)
+        local gcolor = self.anchor_guide_color or self.dim_color
         bb:paintRect(cx - 1, baseline_y - font_pt - guide_gap - guide_h,
-                     2, guide_h, self.dim_color)
+                     2, guide_h, gcolor)
         bb:paintRect(cx - 1, baseline_y + guide_gap,
-                     2, guide_h, self.dim_color)
+                     2, guide_h, gcolor)
     end
 
     -- ── Underline style ────────────────────────────────────────────────────
@@ -403,10 +404,13 @@ function RSVPScreen:_initColors()
         self.bg_color      = Blitbuffer.COLOR_BLACK
         self.fg_color      = Blitbuffer.COLOR_WHITE
         self.dim_color     = Blitbuffer.COLOR_GREY
-        self.phantom_color = Blitbuffer.COLOR_GREY
+        -- Mid grey on black is invisible on e-ink; use a lighter grey for context words.
+        self.phantom_color = Blitbuffer.COLOR_LIGHT_GRAY
         self.orp_bg        = Blitbuffer.COLOR_WHITE
         self.orp_fg        = Blitbuffer.COLOR_BLACK
         self.accent_color  = Blitbuffer.COLOR_WHITE
+        -- Guides must stay visible on black (dim_title stays grey for secondary text).
+        self.anchor_guide_color = Blitbuffer.COLOR_LIGHT_GRAY
     else
         -- light (default)
         self.bg_color      = Blitbuffer.COLOR_WHITE
@@ -416,6 +420,7 @@ function RSVPScreen:_initColors()
         self.orp_bg        = Blitbuffer.COLOR_BLACK
         self.orp_fg        = Blitbuffer.COLOR_WHITE
         self.accent_color  = Blitbuffer.COLOR_BLACK
+        self.anchor_guide_color = Blitbuffer.COLOR_GREY
     end
 
     -- Render/session cache: session-stable values rebuilt only when settings
@@ -632,13 +637,30 @@ function RSVPScreen:_openScrubPreview()
     if self.is_playing then self:_stopPlayback() end
     local self_ref = self
     local ScrubPreview = require("modules/ui/scrub_preview")
-    UIManager:show(ScrubPreview:new{
+    local StartReadingMenu = require("modules/ui/start_reading_menu")
+    local scrub
+    scrub = ScrubPreview:new{
         engine   = self_ref.engine,
         settings = self_ref.settings,
+        file_path = self_ref.file_path,
+        on_overview_tap = function()
+            scrub:_close()
+            StartReadingMenu.show{
+                settings = self_ref.settings,
+                engine = self_ref.engine,
+                file_path = self_ref.file_path,
+                on_reading_ready = function()
+                    self_ref:_initColors()
+                    self_ref.engine:refreshSettingsCache(self_ref._rc)
+                    self_ref:_setDirty("full")
+                end,
+            }
+        end,
         on_close = function()
             self_ref:_setDirty("full")
         end,
-    })
+    }
+    UIManager:show(scrub)
 end
 
 -- Hardware back key

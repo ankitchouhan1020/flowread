@@ -7,6 +7,8 @@ can quickly browse forward/backward before returning to RSVP playback.
 
 Gesture map:
   tap word           → select that word as current/start position
+  tap header left    → back / close
+  tap header right Overview → Start Reading menu (RSVP browse) or close (word picker)
   tap left footer    → previous page
   tap centre footer  → return to RSVP/start selector
   tap right footer   → next page
@@ -49,7 +51,8 @@ local ScrubPreview = InputContainer:extend{
 -- ── Lifecycle ────────────────────────────────────────────────────────────────
 
 function ScrubPreview:init()
-    -- self.engine, self.settings, self.on_close, self.on_select already set by new{...}
+    -- self.engine, self.settings, self.file_path, self.on_close, self.on_select,
+    -- self.on_overview_tap optional (browse-from-RSVP: opens Start Reading)
 
     local sw = Screen:getWidth()
     local sh = Screen:getHeight()
@@ -81,7 +84,7 @@ function ScrubPreview:_initColors()
         self.bg_color      = Blitbuffer.COLOR_BLACK
         self.fg_color      = Blitbuffer.COLOR_WHITE
         self.dim_color     = Blitbuffer.COLOR_GREY
-        self.phantom_color = Blitbuffer.COLOR_GREY
+        self.phantom_color = Blitbuffer.COLOR_LIGHT_GRAY
         self.orp_bg        = Blitbuffer.COLOR_WHITE
         self.orp_fg        = Blitbuffer.COLOR_BLACK
         self.accent_color  = Blitbuffer.COLOR_WHITE
@@ -133,11 +136,10 @@ function ScrubPreview:paintTo(bb, x, y)
 
     -- Header bar
     local STATUS_H = 36
-    local info  = self.engine:currentWordInfo()
-    local ch, current_n = self.engine:currentChapter()
+    local ch = select(1, self.engine:currentChapter())
     local hint  = self.select_mode and _("Select start word")
                or (ch and ch.title or _("Scrub Preview"))
-    local pos_str = info and string.format("%d / %d", info.index, info.total) or ""
+    local overview_lbl = _("Overview")
 
     local hface = self._preview_hface
     RenderText:renderUtf8Text(bb, 8, 22, hface, _("Back"),
@@ -146,9 +148,11 @@ function ScrubPreview:paintTo(bb, x, y)
     local hint_w = RenderText:sizeUtf8Text(0, W, hface, hint, true, false).x
     RenderText:renderUtf8Text(bb, math.floor((W - hint_w) / 2), 22, hface, hint,
         true, false, self.dim_color)
-    local ps_w = RenderText:sizeUtf8Text(0, W, hface, pos_str, true, false).x
-    RenderText:renderUtf8Text(bb, W - ps_w - 8, 22, hface, pos_str,
-        true, false, self.dim_color)
+    local ov_w = RenderText:sizeUtf8Text(0, W, hface, overview_lbl, true, false).x
+    local ov_x = W - ov_w - 8
+    RenderText:renderUtf8Text(bb, ov_x, 22, hface, overview_lbl,
+        true, false, self.accent_color)
+    self._overview_tap_left = ov_x - 6
     bb:paintRect(0, STATUS_H, W, 1, self.dim_color)
 
     -- Paginated footer
@@ -274,8 +278,15 @@ function ScrubPreview:onTap(_, ges)
     local W = self.dimen.w
     local H = self.dimen.h
 
-    if y <= 36 and x <= math.floor(W * 0.33) then
+    local STATUS_H = 36
+    if y <= STATUS_H and x <= math.floor(W * 0.33) then
         self:_close()
+    elseif y <= STATUS_H and self._overview_tap_left and x >= self._overview_tap_left then
+        if self.on_overview_tap then
+            self.on_overview_tap()
+        else
+            self:_close()
+        end
     elseif y >= H - 40 then
         if x <= math.floor(W * 0.33) then
             self:_page(-1)

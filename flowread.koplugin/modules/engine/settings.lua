@@ -64,12 +64,30 @@ function Settings:get(key)
     local v = self._store:readSetting(key)
     if v == nil then
         if key == "books_path" then return detectBooksPath() end
-        return DEFAULTS[key]
+        v = DEFAULTS[key]
     end
     -- Scroll mode is disabled on Kindle stabilization builds; force RSVP even
     -- if an older saved setting still says "scroll".
     if key == "reading_mode" and v == "scroll" then
         return "rsvp"
+    end
+    -- Normalize so UI comparisons and RSVP colors always match saved values.
+    if key == "theme" then
+        local t = type(v) == "string" and v:lower() or ""
+        if t == "dark" then return "dark" end
+        return "light"
+    end
+    if key == "anchor_style" then
+        local a = type(v) == "string" and v:lower() or ""
+        if a == "invert" or a == "bold" or a == "underline" or a == "none" then
+            return a
+        end
+        return DEFAULTS.anchor_style
+    end
+    if key == "anchor_position" then
+        local n = tonumber(v)
+        if n == nil then return DEFAULTS.anchor_position end
+        return math.max(20, math.min(80, math.floor(n + 0.5)))
     end
     return v
 end
