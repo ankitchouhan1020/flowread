@@ -278,24 +278,7 @@ function LibraryScreen:_openBook(file_path)
             settings = self.settings,
         }
 
-        local saved = self.settings:getPosition(file_path)
-        if saved and saved.word_index and saved.word_index > 1 then
-            local pct = math.floor(saved.word_index / #result.words * 100)
-            UIManager:show(ConfirmBox:new{
-                text        = string.format(_("Resume from %d%%?"), pct),
-                ok_text     = _("Resume"),
-                cancel_text = _("From beginning"),
-                ok_callback = function()
-                    engine.current_idx = math.min(saved.word_index, #result.words)
-                    self:_startReading(engine, file_path)
-                end,
-                cancel_callback = function()
-                    self:_startReading(engine, file_path)
-                end,
-            })
-        else
-            self:_startReading(engine, file_path)
-        end
+        self:_openStartSelector(engine, file_path)
     end)
 
     if not ok then
@@ -305,6 +288,156 @@ function LibraryScreen:_openBook(file_path)
             timeout = 6,
         })
     end
+end
+
+function LibraryScreen:_openStartSelector(engine, file_path)
+    local selector = InputContainer:extend{
+        name = "flowread_start_selector",
+    }:new{
+        parent    = self,
+        engine    = engine,
+        file_path = file_path,
+    }
+
+    function selector:init()
+        self.key_events = {
+            Close = { { "Back" }, doc = "close start selector" },
+        }
+        self:_buildUI()
+    end
+
+    local function makeStartRow(owner, label, detail, idx)
+        local dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = ROW_H }
+        local row = InputContainer:new{ dimen = dimen }
+        row.ges_events = {
+            Tap = { GestureRange:new{ ges = "tap", range = dimen } },
+        }
+        row.onTap = function()
+            owner.engine:seekTo(idx)
+            UIManager:close(owner)
+            owner.parent:_startReading(owner.engine, owner.file_path)
+            return true
+        end
+        row[1] = FrameContainer:new{
+            width      = Screen:getWidth(),
+            height     = ROW_H,
+            padding    = PAD,
+            bordersize = 0,
+            background = Blitbuffer.COLOR_WHITE,
+            HorizontalGroup:new{
+                align = "center",
+                TextBoxWidget:new{
+                    text          = label,
+                    face          = TITLE_FACE,
+                    width         = math.floor(Screen:getWidth() * 0.58),
+                    height        = ROW_H - PAD * 2,
+                    height_adjust = true,
+                    alignment     = "left",
+                },
+                TextBoxWidget:new{
+                    text          = detail or "",
+                    face          = BADGE_FACE,
+                    width         = math.floor(Screen:getWidth() * 0.32),
+                    height        = ROW_H - PAD * 2,
+                    height_adjust = true,
+                    alignment     = "right",
+                },
+            },
+        }
+        return row
+    end
+
+    function selector:_previewText(start_idx)
+        local out = {}
+        local stop = math.min(#self.engine.words, start_idx + 13)
+        for i = start_idx, stop do
+            out[#out + 1] = self.engine.words[i]
+        end
+        local text = table.concat(out, " ")
+        if #text > 95 then text = text:sub(1, 92) .. "..." end
+        return text
+    end
+
+    function selector:_buildUI()
+        local screen_w = Screen:getWidth()
+        local screen_h = Screen:getHeight()
+        local title_bar = TitleBar:new{
+            width            = screen_w,
+            title            = _("Start Reading"),
+            with_bottom_line = true,
+            close_callback   = function() self:onClose() end,
+            show_parent      = self,
+        }
+
+        local rows = VerticalGroup:new{ align = "left" }
+        local saved = self.parent.settings:getPosition(self.file_path)
+        if saved and saved.word_index and saved.word_index > 1 then
+            local pct = math.floor(saved.word_index / #self.engine.words * 100)
+            table.insert(rows, makeStartRow(self, _("Resume"), pct .. "%", saved.word_index))
+            table.insert(rows, LineWidget:new{ background = Blitbuffer.COLOR_LIGHT_GRAY, dimen = Geom:new{ w = screen_w, h = Size.line.thin } })
+        end
+
+        table.insert(rows, makeStartRow(self, _("Beginning"), _("0%"), 1))
+        table.insert(rows, LineWidget:new{ background = Blitbuffer.COLOR_LIGHT_GRAY, dimen = Geom:new{ w = screen_w, h = Size.line.thin } })
+
+        for _, pct in ipairs({10, 25, 50, 75}) do
+            local idx = math.max(1, math.floor(#self.engine.words * pct / 100))
+            table.insert(rows, makeStartRow(self, string.format(_("%d%%"), pct), self:_previewText(idx), idx))
+            table.insert(rows, LineWidget:new{ background = Blitbuffer.COLOR_LIGHT_GRAY, dimen = Geom:new{ w = screen_w, h = Size.line.thin } })
+        end
+
+        if self.engine.chapters and #self.engine.chapters > 0 then
+            local limit = math.min(#self.engine.chapters, 8)
+            for i = 1, limit do
+                local ch = self.engine.chapters[i]
+                table.insert(rows, makeStartRow(self, ch.title or string.format(_("Chapter %d"), i), _("Chapter"), ch.start_idx))
+                table.insert(rows, LineWidget:new{ background = Blitbuffer.COLOR_LIGHT_GRAY, dimen = Geom:new{ w = screen_w, h = Size.line.thin } })
+            end
+        end
+
+        local title_h = title_bar:getSize().h
+        local ok_sc, ScrollableContainer = pcall(require, "ui/widget/container/scrollablecontainer")
+        local content
+        if ok_sc then
+            content = ScrollableContainer:new{
+                dimen       = Geom:new{ x = 0, y = 0, w = screen_w, h = screen_h - title_h },
+                show_parent = self,
+                rows,
+            }
+        else
+            content = FrameContainer:new{
+                width      = screen_w,
+                height     = screen_h - title_h,
+                padding    = 0,
+                bordersize = 0,
+                background = Blitbuffer.COLOR_WHITE,
+                rows,
+            }
+        end
+
+        self[1] = FrameContainer:new{
+            width      = screen_w,
+            height     = screen_h,
+            padding    = 0,
+            bordersize = 0,
+            background = Blitbuffer.COLOR_WHITE,
+            VerticalGroup:new{
+                align = "left",
+                title_bar,
+                content,
+            },
+        }
+        self.dimen = Geom:new{ x = 0, y = 0, w = screen_w, h = screen_h }
+    end
+
+    function selector:onClose()
+        if self._closed then return true end
+        self._closed = true
+        UIManager:close(self)
+        return true
+    end
+
+    UIManager:show(selector)
 end
 
 function LibraryScreen:_startReading(engine, file_path)
