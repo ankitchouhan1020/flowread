@@ -20,10 +20,10 @@ local _               = require("gettext")
 
 local Screen = Device.screen
 
-local PAD        = Screen:scaleBySize(8)
-local ROW_H      = Screen:scaleBySize(52)
-local LABEL_FACE = Font:getFace("cfont", 16)
-local VALUE_FACE = Font:getFace("smallinfofontbold", 16)
+local PAD        = Screen:scaleBySize(12)
+local ROW_H      = Screen:scaleBySize(72)
+local LABEL_FACE = Font:getFace("cfont", 18)
+local VALUE_FACE = Font:getFace("smallinfofontbold", 17)
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Row builder: label (60%) | value + chevron (40%)

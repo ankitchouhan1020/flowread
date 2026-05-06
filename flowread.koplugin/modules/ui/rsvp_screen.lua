@@ -169,8 +169,12 @@ end
 
 function RSVPScreen:_paintStatus(bb, W)
     local face = self._rc.ui_face
-    local state_str = self.is_locked and ">>" or (self.is_playing and ">" or "||")
-    local label = state_str .. "  " .. self.engine.wpm .. " WPM"
+    local label
+    if self.is_playing then
+        label = ">  " .. self.engine.wpm .. " WPM  Tap pause"
+    else
+        label = "Paused  Tap play  Hold settings"
+    end
 
     RenderText:renderUtf8Text(bb, 8, STATUS_H - 5, face, label,
         true, false, self.dim_color)
@@ -456,7 +460,7 @@ function RSVPScreen:_onWordTimer()
     if not advanced then
         -- End of book
         self:_stopPlayback()
-        self:_setDirty("partial")
+        self:_setDirty("ui")
         local InfoMessage = require("ui/widget/infomessage")
         UIManager:show(InfoMessage:new{
             text    = _("End of book."),
@@ -472,7 +476,7 @@ function RSVPScreen:_onWordTimer()
         self._word_since_save = 0
     end
 
-    self:_setDirty("partial")
+    self:_setDirty("fast", self:_wordRegion())
 
     -- Pause at sentence end if requested
     local info = self.engine:currentWordInfo()
@@ -480,15 +484,25 @@ function RSVPScreen:_onWordTimer()
         self.is_playing = false
         self.is_locked  = false
         self._pause_at_sentence = false
-        self:_setDirty("partial")
+        self:_setDirty("ui")
         return
     end
 
     self:_scheduleNext()
 end
 
-function RSVPScreen:_setDirty(mode)
-    UIManager:setDirty(self, mode or "partial")
+function RSVPScreen:_wordRegion()
+    local margin = math.floor(self.dimen.h * 0.18)
+    return Geom:new{
+        x = 0,
+        y = STATUS_H + margin,
+        w = self.dimen.w,
+        h = math.max(80, self.dimen.h - STATUS_H - PROGRESS_H - BOTTOM_PAD - margin * 2),
+    }
+end
+
+function RSVPScreen:_setDirty(mode, region)
+    UIManager:setDirty(self, mode or "ui", region)
 end
 
 function RSVPScreen:_savePosition()
@@ -502,26 +516,14 @@ end
 
 function RSVPScreen:onTap(_, ges)
     if not ges or not ges.pos then return true end
-    -- Left-edge 10% → sentence rewind
-    if ges.pos.x < self.dimen.w * 0.10 then
-        self.engine:rewindSentence()
-        if self.is_playing then
-            -- Restart playback from rewound position
-            self:_stopPlayback()
-            self:_startPlayback()
-        end
-        self:_setDirty("partial")
-        return true
-    end
 
-    -- Normal tap: toggle play / pause
+    -- Kindle-first behavior: tap anywhere immediately toggles playback.
     if self.is_playing then
-        -- Pause at end of current sentence (like rsvpnano release-to-pause)
-        self:_pauseAtSentenceEnd()
+        self:_stopPlayback()
     else
         self:_startPlayback()
     end
-    self:_setDirty("partial")
+    self:_setDirty("ui")
     return true
 end
 
@@ -538,7 +540,7 @@ function RSVPScreen:onDoubleTap(_, ges)
             self:_startPlayback()
         end
     end
-    self:_setDirty("partial")
+    self:_setDirty("ui")
     return true
 end
 
@@ -547,10 +549,10 @@ function RSVPScreen:onSwipe(_, ges)
     local dir = ges.direction
     if dir == "north" then
         self.engine:increaseWPM(10)
-        self:_setDirty("partial")
+        self:_setDirty("ui")
     elseif dir == "south" then
         self.engine:decreaseWPM(10)
-        self:_setDirty("partial")
+        self:_setDirty("ui")
     elseif dir == "east" or dir == "west" then
         if not self.is_playing then
             -- Paused: open the hold-and-browse scrub preview
@@ -564,7 +566,7 @@ function RSVPScreen:onSwipe(_, ges)
             -- Playing: immediate word-jump (no preview disruption)
             if dir == "east" then self.engine:scrubForward()
             else self.engine:scrubBackward() end
-            self:_setDirty("partial")
+            self:_setDirty("fast", self:_wordRegion())
         end
     end
     return true

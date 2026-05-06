@@ -24,10 +24,10 @@ local _               = require("gettext")
 
 local Screen = Device.screen
 
-local PAD       = Screen:scaleBySize(8)
-local ROW_H     = Screen:scaleBySize(58)
-local TITLE_FACE = Font:getFace("cfont", 17)
-local BADGE_FACE = Font:getFace("smallinfofontbold", 14)
+local PAD        = Screen:scaleBySize(12)
+local ROW_H      = Screen:scaleBySize(76)
+local TITLE_FACE = Font:getFace("cfont", 19)
+local BADGE_FACE = Font:getFace("smallinfofontbold", 16)
 
 local SUPPORTED_EXT = {
     epub = true, txt = true, md = true, markdown = true,

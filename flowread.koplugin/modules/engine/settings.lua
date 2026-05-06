@@ -4,12 +4,12 @@ local logger      = require("logger")
 
 local DEFAULTS = {
     -- Reading speed
-    wpm                  = 250,
+    wpm                  = 180,
 
     -- ORP / anchor
     anchor_position      = 50,          -- % from left edge (50 = center)
-    anchor_style         = "invert",    -- "invert" | "bold" | "underline" | "none"
-    anchor_guides        = true,        -- vertical guide lines above/below ORP
+    anchor_style         = "bold",      -- "invert" | "bold" | "underline" | "none"
+    anchor_guides        = false,       -- vertical guide lines above/below ORP
 
     -- Context
     phantom_words        = false,       -- show previous/next word dimly
