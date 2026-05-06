@@ -50,11 +50,8 @@ local ScrubPreview = InputContainer:extend{
 
 -- ── Lifecycle ────────────────────────────────────────────────────────────────
 
-function ScrubPreview:init(o)
-    o = o or {}
-    self.engine   = o.engine
-    self.settings = o.settings
-    self.on_close = o.on_close  -- called when preview is dismissed
+function ScrubPreview:init()
+    -- self.engine, self.settings, self.on_close already set by new{...}
 
     self._scrolling = false
     self._scroll_y  = Screen:getHeight() / 2

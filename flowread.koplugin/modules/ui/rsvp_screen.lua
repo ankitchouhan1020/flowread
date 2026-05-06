@@ -82,11 +82,8 @@ local RSVPScreen = InputContainer:extend{
 
 -- ── Lifecycle ──────────────────────────────────────────────────────────────
 
-function RSVPScreen:init(o)
-    o = o or {}
-    self.engine    = o.engine
-    self.settings  = o.settings
-    self.file_path = o.file_path or ""
+function RSVPScreen:init()
+    self.file_path = self.file_path or ""
 
     self.is_playing  = false
     self.is_locked   = false   -- double-tap lock mode
