@@ -23,7 +23,7 @@ without manual invalidation logic.
 
 Usage
 -----
-    local TextLayout = require("flowread/text_layout")
+    local TextLayout = require("text_layout")
 
     -- In _initColors():
     self._text_layout = TextLayout:new{

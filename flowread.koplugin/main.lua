@@ -7,8 +7,8 @@ local UIManager       = require("ui/uimanager")
 local logger          = require("logger")
 local _               = require("gettext")
 
-local Settings      = require("flowread/settings")
-local LibraryScreen = require("flowread/library_screen")
+local Settings      = require("settings")
+local LibraryScreen = require("library_screen")
 
 local FlowReadPlugin = WidgetContainer:extend{
     name        = "flowread",
@@ -59,8 +59,8 @@ end
 
 -- Allow opening a specific book directly (e.g. from a future ReaderUI hook)
 function FlowReadPlugin:openBook(file_path)
-    local DocumentParser = require("flowread/document_parser")
-    local RSVPEngine     = require("flowread/rsvp_engine")
+    local DocumentParser = require("document_parser")
+    local RSVPEngine     = require("rsvp_engine")
 
     local result, err = DocumentParser:parse(file_path)
     if not result or not result.words or #result.words == 0 then
@@ -86,8 +86,8 @@ function FlowReadPlugin:openBook(file_path)
 
     local mode = self.settings:get("reading_mode")
     local ScreenClass = (mode == "scroll")
-        and require("flowread/scroll_screen")
-        or  require("flowread/rsvp_screen")
+        and require("scroll_screen")
+        or  require("rsvp_screen")
 
     local screen = ScreenClass:new{
         engine    = engine,

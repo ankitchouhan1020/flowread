@@ -75,6 +75,8 @@ FlowRead also registers a general KOReader action named `Open FlowRead`, so Zen
 UI custom buttons/action menus can launch it even when the standard tools menu is
 not visible.
 
+For a Zen UI navbar tile, add a custom tab and select the `Open FlowRead` action.
+
 ## First Run
 
 1. Open `FlowRead` from KOReader's More tools menu.

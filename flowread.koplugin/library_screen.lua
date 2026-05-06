@@ -7,7 +7,7 @@ local lfs         = require("libs/libkoreader-lfs")
 local logger      = require("logger")
 local _           = require("gettext")
 
-local SettingsPanel = require("flowread/settings_panel")
+local SettingsPanel = require("settings_panel")
 
 -- File extensions supported by the document parser
 local SUPPORTED_EXT = {
@@ -157,8 +157,8 @@ function LibraryScreen:_scanDir(dir_path, results, depth)
 end
 
 function LibraryScreen:_openBook(file_path)
-    local DocumentParser = require("flowread/document_parser")
-    local RSVPEngine     = require("flowread/rsvp_engine")
+    local DocumentParser = require("document_parser")
+    local RSVPEngine     = require("rsvp_engine")
 
     local loading = InfoMessage:new{ text = _("Loading…"), timeout = 0 }
     UIManager:show(loading)
@@ -207,9 +207,9 @@ function LibraryScreen:_openReadingScreen(engine, file_path)
     local mode = self.settings:get("reading_mode")
     local ScreenClass
     if mode == "scroll" then
-        ScreenClass = require("flowread/scroll_screen")
+        ScreenClass = require("scroll_screen")
     else
-        ScreenClass = require("flowread/rsvp_screen")
+        ScreenClass = require("rsvp_screen")
     end
     UIManager:show(ScreenClass:new{
         engine    = engine,
