@@ -211,9 +211,18 @@ function RSVPScreen:_paintWord(bb, W, area_y, area_h, word_info)
     local suffix_w = self:_trackedTextWidth(face, suffix, tracking)
     local total_w  = prefix_w + orp_w + suffix_w
 
-    -- Anchor X: left edge of ORP letter sits at anchor_position% of screen
-    local anchor_x = math.floor(W * rc.anchor_ratio) - math.floor(orp_w / 2)
-    anchor_x = math.max(4, math.min(W - total_w - 4, anchor_x - prefix_w) + prefix_w)
+    -- Keep the full word visually centered whenever it fits. This is much
+    -- steadier on Kindle than strict ORP anchoring for long words.
+    local word_left
+    if total_w <= W - 16 then
+        word_left = math.floor((W - total_w) / 2)
+    else
+        -- Too wide for screen: keep ORP close to center while clipping equally.
+        local desired_orp_center = math.floor(W * 0.50)
+        word_left = desired_orp_center - prefix_w - math.floor(orp_w / 2)
+        word_left = math.min(8, math.max(W - total_w - 8, word_left))
+    end
+    local anchor_x = word_left + prefix_w
 
     local baseline_y = area_y + math.floor(area_h / 2) + math.floor(font_pt * 0.3)
     local style = rc.style
@@ -574,65 +583,18 @@ end
 
 function RSVPScreen:onHoldRelease(_, ges)
     if self.is_playing then self:_stopPlayback() end
-
-    local has_chapters = self.engine:chapterCount() > 0
     local self_ref = self
 
-    local function openSettings()
-        local SettingsPanel = require("modules/ui/settings_panel")
-        UIManager:show(SettingsPanel:new{
-            settings = self_ref.settings,
-            on_close = function()
-                self_ref:_initColors()
-                self_ref.engine:refreshSettingsCache(self_ref._rc)
-                self_ref:_setDirty("full")
-            end,
-        })
-    end
-
-    if not has_chapters then
-        -- No chapters: go straight to settings
-        openSettings()
-        return true
-    end
-
-    -- Has chapters: show a two-button choice
-    local ButtonDialogTitle = require("ui/widget/buttondialogtitle")
-    local dialog
-    dialog = ButtonDialogTitle:new{
-        title   = _("Menu"),
-        buttons = {
-            {
-                {
-                    text     = _("Chapters"),
-                    callback = function()
-                        UIManager:close(dialog)
-                        local ChaptersScreen = require("modules/ui/chapters_screen")
-                        UIManager:show(ChaptersScreen:new{
-                            engine    = self_ref.engine,
-                            on_return = function()
-                                self_ref:_setDirty("full")
-                            end,
-                        })
-                    end,
-                },
-                {
-                    text     = _("Settings"),
-                    callback = function()
-                        UIManager:close(dialog)
-                        openSettings()
-                    end,
-                },
-            },
-            {
-                {
-                    text     = _("Cancel"),
-                    callback = function() UIManager:close(dialog) end,
-                },
-            },
-        },
-    }
-    UIManager:show(dialog)
+    -- Kindle-stable path: avoid stacked button dialogs over the RSVP timer.
+    local SettingsPanel = require("modules/ui/settings_panel")
+    UIManager:show(SettingsPanel:new{
+        settings = self_ref.settings,
+        on_close = function()
+            self_ref:_initColors()
+            self_ref.engine:refreshSettingsCache(self_ref._rc)
+            self_ref:_setDirty("full")
+        end,
+    })
     return true
 end
 

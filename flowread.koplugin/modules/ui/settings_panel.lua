@@ -319,6 +319,8 @@ function SettingsPanel:_buildUI()
 end
 
 function SettingsPanel:onClose()
+    if self._closed then return true end
+    self._closed = true
     UIManager:close(self)
     if self.on_close then self.on_close() end
     return true
