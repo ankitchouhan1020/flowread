@@ -61,12 +61,23 @@ The final path should look like this:
 Restart KOReader, then open:
 
 ```text
-Top menu -> Tools -> FlowRead
+Top menu -> Tools -> More tools -> FlowRead
 ```
+
+If you use [Zen UI](https://anthonygress.github.io/zen_ui.koplugin/) and the
+normal KOReader tools menu is hidden, first confirm the plugin is enabled in:
+
+```text
+Tools -> More tools -> Plugin management -> FlowRead
+```
+
+FlowRead also registers a general KOReader action named `Open FlowRead`, so Zen
+UI custom buttons/action menus can launch it even when the standard tools menu is
+not visible.
 
 ## First Run
 
-1. Open `FlowRead` from KOReader's Tools menu.
+1. Open `FlowRead` from KOReader's More tools menu.
 2. Open settings from the library screen.
 3. Set `Books folder` to the folder containing your books. The default is
    `/sdcard/Books`.

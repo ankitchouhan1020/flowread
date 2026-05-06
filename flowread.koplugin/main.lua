@@ -1,4 +1,8 @@
-local WidgetContainer = require("ui/widget/widgetcontainer")
+local ok_widget, WidgetContainer = pcall(require, "ui/widget/container/widgetcontainer")
+if not ok_widget then
+    WidgetContainer = require("ui/widget/widgetcontainer")
+end
+local Dispatcher      = require("dispatcher")
 local UIManager       = require("ui/uimanager")
 local logger          = require("logger")
 local _               = require("gettext")
@@ -15,6 +19,7 @@ local FlowReadPlugin = WidgetContainer:extend{
 
 function FlowReadPlugin:init()
     self.settings = Settings:new()
+    self:onDispatcherRegisterActions()
     if self.ui and self.ui.menu then
         self.ui.menu:registerToMainMenu(self)
     end
@@ -24,11 +29,25 @@ end
 function FlowReadPlugin:addToMainMenu(menu_items)
     menu_items.flowread = {
         text         = _("FlowRead"),
-        sorting_hint = "tools",
+        sorting_hint = "more_tools",
         callback     = function()
             self:openLibrary()
         end,
     }
+end
+
+function FlowReadPlugin:onDispatcherRegisterActions()
+    Dispatcher:registerAction("flowread_open", {
+        category = "none",
+        event    = "FlowReadOpen",
+        title    = _("Open FlowRead"),
+        general  = true,
+    })
+end
+
+function FlowReadPlugin:onFlowReadOpen()
+    self:openLibrary()
+    return true
 end
 
 function FlowReadPlugin:openLibrary()

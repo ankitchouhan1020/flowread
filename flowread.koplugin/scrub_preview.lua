@@ -13,7 +13,10 @@ Gesture map:
   hardware Back      → same as tap
 --]]
 
-local InputContainer = require("ui/widget/inputcontainer")
+local ok_input, InputContainer = pcall(require, "ui/widget/container/inputcontainer")
+if not ok_input then
+    InputContainer = require("ui/widget/inputcontainer")
+end
 local GestureRange   = require("ui/gesturerange")
 local UIManager      = require("ui/uimanager")
 local Device         = require("device")
