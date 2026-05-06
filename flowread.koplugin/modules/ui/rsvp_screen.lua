@@ -99,7 +99,10 @@ function RSVPScreen:init()
 
     -- Single stable advance closure; UIManager:unschedule is reliable across
     -- all calls because the function reference never changes between advances.
-    self._advanceFn = function() self:_onWordTimer() end
+    self._advanceFn = function()
+        local ok, err = pcall(function() self:_onWordTimer() end)
+        if not ok then self:_handleRuntimeError(err) end
+    end
 
     -- Set up gesture handlers
     self.ges_events = {
@@ -170,7 +173,7 @@ function RSVPScreen:_paintStatus(bb, W)
     local label = state_str .. "  " .. self.engine.wpm .. " WPM"
 
     RenderText:renderUtf8Text(bb, 8, STATUS_H - 5, face, label,
-        false, false, self.dim_color)
+        true, false, self.dim_color)
 
     -- Right side: current chapter title if available, else file name
     local right_label
@@ -181,9 +184,9 @@ function RSVPScreen:_paintStatus(bb, W)
         right_label = self.file_path:match("[^/]+$") or ""
     end
     if #right_label > 32 then right_label = right_label:sub(1, 29) .. "..." end
-    local rl_w = RenderText:sizeUtf8Text(0, W, face, right_label, false, false).x
+    local rl_w = RenderText:sizeUtf8Text(0, W, face, right_label, true, false).x
     RenderText:renderUtf8Text(bb, W - rl_w - 8, STATUS_H - 5, face, right_label,
-        false, false, self.dim_color)
+        true, false, self.dim_color)
 end
 
 function RSVPScreen:_paintWord(bb, W, area_y, area_h, word_info)
@@ -288,7 +291,7 @@ function RSVPScreen:_paintProgress(bb, W, bar_y, word_info)
     -- Bar geometry: leave room for the text label on the right
     local label = string.format("%d%%  %dm", math.floor(frac * 100),
                                 math.ceil(self.engine:minutesRemaining()))
-    local label_w = RenderText:sizeUtf8Text(0, W, face, label, false, false).x
+    local label_w = RenderText:sizeUtf8Text(0, W, face, label, true, false).x
     local bar_w   = W - label_w - 20
     local bar_h   = PROGRESS_H - 6
     local bar_x   = 8
@@ -305,7 +308,7 @@ function RSVPScreen:_paintProgress(bb, W, bar_y, word_info)
     local label_x = W - label_w - 8
     local text_y  = bar_y + PROGRESS_H - 4
     RenderText:renderUtf8Text(bb, label_x, text_y, face, label,
-        false, false, self.fg_color)
+        true, false, self.fg_color)
 end
 
 -- ── Typography helpers ─────────────────────────────────────────────────────
@@ -327,11 +330,11 @@ function RSVPScreen:_trackedTextWidth(face, text, tracking)
     if not text or text == "" then return 0 end
     tracking = tracking or 0
     if tracking == 0 then
-        return RenderText:sizeUtf8Text(0, 9999, face, text, false, false).x
+        return RenderText:sizeUtf8Text(0, 9999, face, text, true, false).x
     end
     local total, count = 0, 0
     for ch in utf8_chars(text) do
-        total = total + RenderText:sizeUtf8Text(0, 9999, face, ch, false, false).x
+        total = total + RenderText:sizeUtf8Text(0, 9999, face, ch, true, false).x
         count = count + 1
     end
     -- Add tracking between characters (not after the last one)
@@ -350,14 +353,14 @@ function RSVPScreen:_renderTrackedText(bb, x, y, face, text, bold, color, tracki
     tracking = tracking or 0
     if tracking == 0 then
         -- Single call, no extra sizeUtf8Text — callers use pre-measured widths.
-        RenderText:renderUtf8Text(bb, x, y, face, text, bold, false, color)
+        RenderText:renderUtf8Text(bb, x, y, face, text, true, bold, color)
         return x
     end
     local chars = {}
     for ch in utf8_chars(text) do table.insert(chars, ch) end
     for ci, ch in ipairs(chars) do
-        RenderText:renderUtf8Text(bb, x, y, face, ch, bold, false, color)
-        local w = RenderText:sizeUtf8Text(0, 9999, face, ch, bold, false).x
+        RenderText:renderUtf8Text(bb, x, y, face, ch, true, bold, color)
+        local w = RenderText:sizeUtf8Text(0, 9999, face, ch, true, bold).x
         x = x + w + (ci < #chars and tracking or 0)
     end
     return x
@@ -429,7 +432,19 @@ end
 ---Schedule the next word using the stable _advanceFn closure.
 function RSVPScreen:_scheduleNext()
     if not self.is_playing then return end
+    UIManager:unschedule(self._advanceFn)
     UIManager:scheduleIn(self.engine:displayTime(), self._advanceFn)
+end
+
+function RSVPScreen:_handleRuntimeError(err)
+    self.is_playing = false
+    UIManager:unschedule(self._advanceFn)
+    logger.err("FlowRead runtime error: " .. tostring(err))
+    local InfoMessage = require("ui/widget/infomessage")
+    UIManager:show(InfoMessage:new{
+        text    = "FlowRead error:\n" .. tostring(err),
+        timeout = 6,
+    })
 end
 
 ---Invoked by _advanceFn on each timer tick. Advances the word, autosaves,
@@ -485,7 +500,8 @@ end
 
 -- ── Gesture handlers ───────────────────────────────────────────────────────
 
-function RSVPScreen:onTap(ges)
+function RSVPScreen:onTap(_, ges)
+    if not ges or not ges.pos then return true end
     -- Left-edge 10% → sentence rewind
     if ges.pos.x < self.dimen.w * 0.10 then
         self.engine:rewindSentence()
@@ -509,7 +525,7 @@ function RSVPScreen:onTap(ges)
     return true
 end
 
-function RSVPScreen:onDoubleTap(ges)
+function RSVPScreen:onDoubleTap(_, ges)
     if self.is_locked then
         -- Unlock: stop at sentence end
         self:_pauseAtSentenceEnd()
@@ -526,7 +542,8 @@ function RSVPScreen:onDoubleTap(ges)
     return true
 end
 
-function RSVPScreen:onSwipe(ges)
+function RSVPScreen:onSwipe(_, ges)
+    if not ges then return true end
     local dir = ges.direction
     if dir == "north" then
         self.engine:increaseWPM(10)
@@ -553,7 +570,7 @@ function RSVPScreen:onSwipe(ges)
     return true
 end
 
-function RSVPScreen:onHoldRelease(ges)
+function RSVPScreen:onHoldRelease(_, ges)
     if self.is_playing then self:_stopPlayback() end
 
     local has_chapters = self.engine:chapterCount() > 0

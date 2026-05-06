@@ -117,7 +117,7 @@ function ScrubPreview:_initColors()
     local font_pt  = FONT_MAP[self.settings:get("font_size")] or 20
     local tracking = self.settings:get("letter_spacing") or 0
     local face     = self:_getFace(font_pt)
-    local space_w  = RenderText:sizeUtf8Text(0, 9999, face, " ", false, false).x
+    local space_w  = RenderText:sizeUtf8Text(0, 9999, face, " ", true, false).x
 
     self._preview_font_pt   = font_pt
     self._preview_tracking  = tracking
@@ -155,19 +155,19 @@ function ScrubPreview:paintTo(bb, x, y)
 
     local hface = self._preview_hface
     RenderText:renderUtf8Text(bb, 8, STATUS_H - 5, hface, hint,
-        false, false, self.dim_color)
-    local ps_w = RenderText:sizeUtf8Text(0, W, hface, pos_str, false, false).x
+        true, false, self.dim_color)
+    local ps_w = RenderText:sizeUtf8Text(0, W, hface, pos_str, true, false).x
     RenderText:renderUtf8Text(bb, W - ps_w - 8, STATUS_H - 5, hface, pos_str,
-        false, false, self.dim_color)
+        true, false, self.dim_color)
     bb:paintRect(0, STATUS_H, W, 1, self.dim_color)
 
     -- Scroll hint footer
     local FOOTER_H = 24
     local ftip = _("Tap to return  |  Hold + drag to browse")
-    local ftip_w = RenderText:sizeUtf8Text(0, W, hface, ftip, false, false).x
+    local ftip_w = RenderText:sizeUtf8Text(0, W, hface, ftip, true, false).x
     bb:paintRect(0, H - FOOTER_H - 1, W, 1, self.dim_color)
     RenderText:renderUtf8Text(bb, math.floor((W - ftip_w) / 2),
-        H - 6, hface, ftip, false, false, self.dim_color)
+        H - 6, hface, ftip, true, false, self.dim_color)
 
     -- Text area between header and footer
     local area_y = STATUS_H + 1
@@ -264,27 +264,28 @@ ScrubPreview._renderTrackedText  = RSVPScreen._renderTrackedText
 
 -- ── Gesture handlers ─────────────────────────────────────────────────────────
 
-function ScrubPreview:onTap(ges)
+function ScrubPreview:onTap(_, ges)
     self:_close()
     return true
 end
 
-function ScrubPreview:onHold(ges)
+function ScrubPreview:onHold(_, ges)
+    if not ges or not ges.pos then return true end
     self._scroll_y  = ges.pos.y
     self._scrolling = true
     UIManager:scheduleIn(0.05, self._scrollFn)
     return true
 end
 
-function ScrubPreview:onPan(ges)
+function ScrubPreview:onPan(_, ges)
     -- Update the reference y so _scrollLoop picks up the new position
-    if ges.pos then
+    if ges and ges.pos then
         self._scroll_y = ges.pos.y
     end
     return true
 end
 
-function ScrubPreview:onHoldRelease(ges)
+function ScrubPreview:onHoldRelease(_, ges)
     self._scrolling = false
     UIManager:unschedule(self._scrollFn)
     return true

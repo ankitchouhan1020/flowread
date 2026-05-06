@@ -73,7 +73,7 @@ function ScrollScreen:_initColors()
 
     local font_pt = self:_getScrollFontPt()
     local face    = self:_getFace(font_pt)
-    local space_w = RenderText:sizeUtf8Text(0, 9999, face, " ", false, false).x
+    local space_w = RenderText:sizeUtf8Text(0, 9999, face, " ", true, false).x
 
     -- Extend the parent render cache with scroll-specific values
     self._rc.scroll_font_pt  = font_pt
