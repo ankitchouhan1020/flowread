@@ -541,7 +541,7 @@ function RSVPScreen:onSwipe(ges)
     elseif dir == "east" or dir == "west" then
         if not self.is_playing then
             -- Paused: open the hold-and-browse scrub preview
-            local ScrubPreview = require("scrub_preview")
+            local ScrubPreview = require("modules/ui/scrub_preview")
             UIManager:show(ScrubPreview:new{
                 engine   = self.engine,
                 settings = self.settings,
@@ -564,7 +564,7 @@ function RSVPScreen:onHoldRelease(ges)
     local self_ref = self
 
     local function openSettings()
-        local SettingsPanel = require("settings_panel")
+        local SettingsPanel = require("modules/ui/settings_panel")
         UIManager:show(SettingsPanel:new{
             settings       = self_ref.settings,
             refresh_parent = function()
@@ -593,7 +593,7 @@ function RSVPScreen:onHoldRelease(ges)
                     text     = _("Chapters"),
                     callback = function()
                         UIManager:close(dialog)
-                        local ChaptersScreen = require("chapters_screen")
+                        local ChaptersScreen = require("modules/ui/chapters_screen")
                         UIManager:show(ChaptersScreen:new{
                             engine    = self_ref.engine,
                             on_return = function()

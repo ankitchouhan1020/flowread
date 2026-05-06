@@ -35,8 +35,8 @@ local RenderText = require("ui/rendertext")
 local _          = require("gettext")
 
 -- Inherit everything from RSVPScreen
-local RSVPScreen  = require("rsvp_screen")
-local TextLayout  = require("text_layout")
+local RSVPScreen  = require("modules/ui/rsvp_screen")
+local TextLayout  = require("modules/engine/text_layout")
 
 -- Font sizes for scroll mode (smaller than RSVP: room for multiple lines)
 local SCROLL_FONT_MAP = { small = 17, medium = 21, large = 27 }

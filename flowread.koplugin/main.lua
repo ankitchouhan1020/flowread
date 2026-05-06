@@ -2,23 +2,18 @@ local ok_widget, WidgetContainer = pcall(require, "ui/widget/container/widgetcon
 if not ok_widget then
     WidgetContainer = require("ui/widget/widgetcontainer")
 end
-local Dispatcher      = require("dispatcher")
-local UIManager       = require("ui/uimanager")
-local logger          = require("logger")
-local _               = require("gettext")
-
-local Settings      = require("settings")
-local LibraryScreen = require("library_screen")
+local Dispatcher = require("dispatcher")
+local UIManager  = require("ui/uimanager")
+local logger     = require("logger")
+local _          = require("gettext")
 
 local FlowReadPlugin = WidgetContainer:extend{
     name        = "flowread",
     fullname    = _("FlowRead"),
-    -- Available from FileManager (no open document required)
     is_doc_only = false,
 }
 
 function FlowReadPlugin:init()
-    self.settings = Settings:new()
     self:onDispatcherRegisterActions()
     if self.ui and self.ui.menu then
         self.ui.menu:registerToMainMenu(self)
@@ -50,18 +45,40 @@ function FlowReadPlugin:onFlowReadOpen()
     return true
 end
 
-function FlowReadPlugin:openLibrary()
-    local library = LibraryScreen:new{
-        settings = self.settings,
-    }
-    UIManager:show(library)
+function FlowReadPlugin:_getSettings()
+    if not self._cached_settings then
+        local Settings = require("modules/engine/settings")
+        self._cached_settings = Settings:new()
+    end
+    return self._cached_settings
 end
 
--- Allow opening a specific book directly (e.g. from a future ReaderUI hook)
-function FlowReadPlugin:openBook(file_path)
-    local DocumentParser = require("document_parser")
-    local RSVPEngine     = require("rsvp_engine")
+function FlowReadPlugin:openLibrary()
+    local ok, LibraryScreen = pcall(require, "modules/ui/library_screen")
+    if not ok then
+        local InfoMessage = require("ui/widget/infomessage")
+        UIManager:show(InfoMessage:new{
+            text    = "FlowRead: failed to load:\n" .. tostring(LibraryScreen),
+            timeout = 5,
+        })
+        return
+    end
+    UIManager:show(LibraryScreen:new{ settings = self:_getSettings() })
+end
 
+function FlowReadPlugin:openBook(file_path)
+    local ok_dp, DocumentParser = pcall(require, "modules/engine/document_parser")
+    local ok_eng, RSVPEngine    = pcall(require, "modules/engine/rsvp_engine")
+    if not ok_dp or not ok_eng then
+        local InfoMessage = require("ui/widget/infomessage")
+        UIManager:show(InfoMessage:new{
+            text    = _("FlowRead: failed to load reading engine."),
+            timeout = 3,
+        })
+        return
+    end
+
+    local settings = self:_getSettings()
     local result, err = DocumentParser:parse(file_path)
     if not result or not result.words or #result.words == 0 then
         local InfoMessage = require("ui/widget/infomessage")
@@ -75,26 +92,35 @@ function FlowReadPlugin:openBook(file_path)
     local engine = RSVPEngine:new{
         words    = result.words,
         chapters = result.chapters,
-        settings = self.settings,
+        settings = settings,
     }
 
-    -- Restore saved position
-    local saved = self.settings:getPosition(file_path)
+    local saved = settings:getPosition(file_path)
     if saved and saved.word_index and saved.word_index > 1 then
         engine.current_idx = math.min(saved.word_index, #result.words)
     end
 
-    local mode = self.settings:get("reading_mode")
-    local ScreenClass = (mode == "scroll")
-        and require("scroll_screen")
-        or  require("rsvp_screen")
+    local mode = settings:get("reading_mode")
+    local ok_sc, ScreenClass
+    if mode == "scroll" then
+        ok_sc, ScreenClass = pcall(require, "modules/ui/scroll_screen")
+    else
+        ok_sc, ScreenClass = pcall(require, "modules/ui/rsvp_screen")
+    end
+    if not ok_sc then
+        local InfoMessage = require("ui/widget/infomessage")
+        UIManager:show(InfoMessage:new{
+            text    = _("FlowRead: failed to load reading screen."),
+            timeout = 3,
+        })
+        return
+    end
 
-    local screen = ScreenClass:new{
+    UIManager:show(ScreenClass:new{
         engine    = engine,
-        settings  = self.settings,
+        settings  = settings,
         file_path = file_path,
-    }
-    UIManager:show(screen)
+    })
 end
 
 return FlowReadPlugin

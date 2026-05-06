@@ -41,8 +41,8 @@ local DEAD_ZONE    = 0.12
 local MAX_STEP     = 10
 
 -- Re-use typography helpers from RSVPScreen and the shared layout cache.
-local RSVPScreen = require("rsvp_screen")
-local TextLayout  = require("text_layout")
+local RSVPScreen = require("modules/ui/rsvp_screen")
+local TextLayout  = require("modules/engine/text_layout")
 
 local ScrubPreview = InputContainer:extend{
     name = "scrub_preview",
