@@ -291,152 +291,69 @@ function LibraryScreen:_openBook(file_path)
 end
 
 function LibraryScreen:_openStartSelector(engine, file_path)
-    local selector = InputContainer:extend{
-        name = "flowread_start_selector",
-    }:new{
-        parent    = self,
-        engine    = engine,
-        file_path = file_path,
-    }
+    local Menu = require("ui/widget/menu")
+    local selector
 
-    function selector:init()
-        self.key_events = {
-            Close = { { "Back" }, doc = "close start selector" },
-        }
-        self:_buildUI()
-    end
-
-    local function makeStartRow(owner, label, detail, idx)
-        local dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = ROW_H }
-        local row = InputContainer:new{ dimen = dimen }
-        row.ges_events = {
-            Tap = { GestureRange:new{ ges = "tap", range = dimen } },
-        }
-        row.onTap = function()
-            owner.engine:seekTo(idx)
-            UIManager:close(owner)
-            owner.parent:_startReading(owner.engine, owner.file_path)
-            return true
-        end
-        row[1] = FrameContainer:new{
-            width      = Screen:getWidth(),
-            height     = ROW_H,
-            padding    = PAD,
-            bordersize = 0,
-            background = Blitbuffer.COLOR_WHITE,
-            HorizontalGroup:new{
-                align = "center",
-                TextBoxWidget:new{
-                    text          = label,
-                    face          = TITLE_FACE,
-                    width         = math.floor(Screen:getWidth() * 0.58),
-                    height        = ROW_H - PAD * 2,
-                    height_adjust = true,
-                    alignment     = "left",
-                },
-                TextBoxWidget:new{
-                    text          = detail or "",
-                    face          = BADGE_FACE,
-                    width         = math.floor(Screen:getWidth() * 0.32),
-                    height        = ROW_H - PAD * 2,
-                    height_adjust = true,
-                    alignment     = "right",
-                },
-            },
-        }
-        return row
-    end
-
-    function selector:_previewText(start_idx)
+    local function previewText(start_idx)
         local out = {}
-        local stop = math.min(#self.engine.words, start_idx + 13)
+        local stop = math.min(#engine.words, start_idx + 13)
         for i = start_idx, stop do
-            out[#out + 1] = self.engine.words[i]
+            out[#out + 1] = engine.words[i]
         end
         local text = table.concat(out, " ")
         if #text > 95 then text = text:sub(1, 92) .. "..." end
         return text
     end
 
-    function selector:_buildUI()
-        local screen_w = Screen:getWidth()
-        local screen_h = Screen:getHeight()
-        local title_bar = TitleBar:new{
-            width            = screen_w,
-            title            = _("Start Reading"),
-            with_bottom_line = true,
-            close_callback   = function() self:onClose() end,
-            show_parent      = self,
-        }
-
-        local rows = VerticalGroup:new{ align = "left" }
-        local saved = self.parent.settings:getPosition(self.file_path)
-        if saved and saved.word_index and saved.word_index > 1 then
-            local pct = math.floor(saved.word_index / #self.engine.words * 100)
-            table.insert(rows, makeStartRow(self, _("Resume"), pct .. "%", saved.word_index))
-            table.insert(rows, LineWidget:new{ background = Blitbuffer.COLOR_LIGHT_GRAY, dimen = Geom:new{ w = screen_w, h = Size.line.thin } })
-        end
-
-        table.insert(rows, makeStartRow(self, _("Beginning"), _("0%"), 1))
-        table.insert(rows, LineWidget:new{ background = Blitbuffer.COLOR_LIGHT_GRAY, dimen = Geom:new{ w = screen_w, h = Size.line.thin } })
-
-        for _, pct in ipairs({10, 25, 50, 75}) do
-            local idx = math.max(1, math.floor(#self.engine.words * pct / 100))
-            table.insert(rows, makeStartRow(self, string.format(_("%d%%"), pct), self:_previewText(idx), idx))
-            table.insert(rows, LineWidget:new{ background = Blitbuffer.COLOR_LIGHT_GRAY, dimen = Geom:new{ w = screen_w, h = Size.line.thin } })
-        end
-
-        if self.engine.chapters and #self.engine.chapters > 0 then
-            local limit = math.min(#self.engine.chapters, 8)
-            for i = 1, limit do
-                local ch = self.engine.chapters[i]
-                table.insert(rows, makeStartRow(self, ch.title or string.format(_("Chapter %d"), i), _("Chapter"), ch.start_idx))
-                table.insert(rows, LineWidget:new{ background = Blitbuffer.COLOR_LIGHT_GRAY, dimen = Geom:new{ w = screen_w, h = Size.line.thin } })
-            end
-        end
-
-        local title_h = title_bar:getSize().h
-        local ok_sc, ScrollableContainer = pcall(require, "ui/widget/container/scrollablecontainer")
-        local content
-        if ok_sc then
-            content = ScrollableContainer:new{
-                dimen       = Geom:new{ x = 0, y = 0, w = screen_w, h = screen_h - title_h },
-                show_parent = self,
-                rows,
-            }
-        else
-            content = FrameContainer:new{
-                width      = screen_w,
-                height     = screen_h - title_h,
-                padding    = 0,
-                bordersize = 0,
-                background = Blitbuffer.COLOR_WHITE,
-                rows,
-            }
-        end
-
-        self[1] = FrameContainer:new{
-            width      = screen_w,
-            height     = screen_h,
-            padding    = 0,
-            bordersize = 0,
-            background = Blitbuffer.COLOR_WHITE,
-            VerticalGroup:new{
-                align = "left",
-                title_bar,
-                content,
-            },
-        }
-        self.dimen = Geom:new{ x = 0, y = 0, w = screen_w, h = screen_h }
-    end
-
-    function selector:onClose()
-        if self._closed then return true end
-        self._closed = true
+    local function startAt(idx)
+        engine:seekTo(idx)
         UIManager:close(self)
-        return true
+        if selector then UIManager:close(selector) end
+        self:_startReading(engine, file_path)
     end
 
+    local items = {}
+    local saved = self.settings:getPosition(file_path)
+    if saved and saved.word_index and saved.word_index > 1 then
+        local pct = math.floor(saved.word_index / #engine.words * 100)
+        table.insert(items, {
+            text = _("Resume"),
+            mandatory = pct .. "%",
+            callback = function() startAt(saved.word_index) end,
+        })
+    end
+    table.insert(items, {
+        text = _("Beginning"),
+        mandatory = "0%",
+        callback = function() startAt(1) end,
+    })
+    for _, pct in ipairs({10, 25, 50, 75}) do
+        local idx = math.max(1, math.floor(#engine.words * pct / 100))
+        table.insert(items, {
+            text = string.format(_("%d%%"), pct),
+            mandatory = previewText(idx),
+            callback = function() startAt(idx) end,
+        })
+    end
+    if engine.chapters and #engine.chapters > 0 then
+        local limit = math.min(#engine.chapters, 8)
+        for i = 1, limit do
+            local ch = engine.chapters[i]
+            table.insert(items, {
+                text = ch.title or string.format(_("Chapter %d"), i),
+                mandatory = _("Chapter"),
+                callback = function() startAt(ch.start_idx) end,
+            })
+        end
+    end
+
+    selector = Menu:new{
+        title = _("Start Reading"),
+        item_table = items,
+        width = Screen:getWidth(),
+        height = Screen:getHeight(),
+        is_borderless = false,
+    }
     UIManager:show(selector)
 end
 
