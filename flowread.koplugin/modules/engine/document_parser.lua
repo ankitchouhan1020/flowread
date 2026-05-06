@@ -217,6 +217,36 @@ function DocumentParser:_unzipRead(zip_path, inner_path)
     return content
 end
 
+-- ── Tag-block remover (no .* or .- patterns to avoid C stack overflow) ───────
+
+-- Removes all content between matching open and close tags using plain string
+-- search. Safe on large HTML files where Lua's pattern engine would overflow.
+local function removeTagBlock(html, tag)
+    local open_lo  = "<"  .. tag:lower()
+    local open_hi  = "<"  .. tag:upper()
+    local close_lo = "</" .. tag:lower()
+    local close_hi = "</" .. tag:upper()
+    local result, pos = {}, 1
+    while pos <= #html do
+        local s1 = html:find(open_lo, pos, true)
+        local s2 = html:find(open_hi, pos, true)
+        local start = (s1 and s2) and math.min(s1, s2) or s1 or s2
+        if not start then
+            result[#result + 1] = html:sub(pos)
+            break
+        end
+        result[#result + 1] = html:sub(pos, start - 1)
+        local e1 = html:find(close_lo, start, true)
+        local e2 = html:find(close_hi, start, true)
+        local cs = (e1 and e2) and math.min(e1, e2) or e1 or e2
+        if not cs then break end
+        local ce = html:find(">", cs, true)
+        if not ce then break end
+        pos = ce + 1
+    end
+    return table.concat(result)
+end
+
 -- ── HTML → plain-text ────────────────────────────────────────────────────────
 
 function DocumentParser:_stripHTML(html)
@@ -224,12 +254,21 @@ function DocumentParser:_stripHTML(html)
 
     html = html:gsub("<%?xml[^>]*%?>", "")
     html = html:gsub("<!DOCTYPE[^>]*>", "")
-    html = html:gsub("<!%-%-.-%-%->", "")
+    -- Remove XML/HTML comments using plain search (avoids .* stack overflow)
+    do
+        local result, pos = {}, 1
+        while pos <= #html do
+            local s = html:find("<!--", pos, true)
+            if not s then result[#result + 1] = html:sub(pos); break end
+            result[#result + 1] = html:sub(pos, s - 1)
+            local e = html:find("-->", s + 4, true)
+            pos = e and (e + 3) or (#html + 1)
+        end
+        html = table.concat(result)
+    end
 
-    html = html:gsub("<[Ss][Cc][Rr][Ii][Pp][Tt][^>]*>.-</" ..
-                     "[Ss][Cc][Rr][Ii][Pp][Tt]%s*>", " ")
-    html = html:gsub("<[Ss][Tt][Yy][Ll][Ee][^>]*>.-</" ..
-                     "[Ss][Tt][Yy][Ll][Ee]%s*>", " ")
+    html = removeTagBlock(html, "script")
+    html = removeTagBlock(html, "style")
 
     local block = { "p","div","h1","h2","h3","h4","h5","h6",
                     "li","tr","td","th","blockquote","section",

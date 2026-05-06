@@ -253,55 +253,75 @@ function LibraryScreen:_scanDir(dir_path, results, depth)
 end
 
 function LibraryScreen:_openBook(file_path)
-    local DocumentParser = require("modules/engine/document_parser")
-    local RSVPEngine     = require("modules/engine/rsvp_engine")
-
     local loading = InfoMessage:new{ text = _("Loading…"), timeout = 0 }
     UIManager:show(loading)
     UIManager:forceRePaint()
 
-    local result, err = DocumentParser:parse(file_path)
-    UIManager:close(loading)
+    local ok, err = pcall(function()
+        local DocumentParser = require("modules/engine/document_parser")
+        local RSVPEngine     = require("modules/engine/rsvp_engine")
 
-    if not result or not result.words or #result.words == 0 then
+        local result, parse_err = DocumentParser:parse(file_path)
+        UIManager:close(loading)
+
+        if not result or not result.words or #result.words == 0 then
+            UIManager:show(InfoMessage:new{
+                text    = _("Could not extract text.\n") .. (parse_err or ""),
+                timeout = 4,
+            })
+            return
+        end
+
+        local engine = RSVPEngine:new{
+            words    = result.words,
+            chapters = result.chapters,
+            settings = self.settings,
+        }
+
+        local saved = self.settings:getPosition(file_path)
+        if saved and saved.word_index and saved.word_index > 1 then
+            local pct = math.floor(saved.word_index / #result.words * 100)
+            UIManager:show(ConfirmBox:new{
+                text        = string.format(_("Resume from %d%%?"), pct),
+                ok_text     = _("Resume"),
+                cancel_text = _("From beginning"),
+                ok_callback = function()
+                    engine.current_idx = math.min(saved.word_index, #result.words)
+                    self:_startReading(engine, file_path)
+                end,
+                cancel_callback = function()
+                    self:_startReading(engine, file_path)
+                end,
+            })
+        else
+            self:_startReading(engine, file_path)
+        end
+    end)
+
+    if not ok then
+        UIManager:close(loading)
         UIManager:show(InfoMessage:new{
-            text    = _("Could not extract text.\n") .. (err or ""),
-            timeout = 4,
+            text    = "FlowRead error:\n" .. tostring(err),
+            timeout = 6,
         })
-        return
-    end
-
-    local engine = RSVPEngine:new{
-        words    = result.words,
-        chapters = result.chapters,
-        settings = self.settings,
-    }
-
-    local saved = self.settings:getPosition(file_path)
-    if saved and saved.word_index and saved.word_index > 1 then
-        local pct = math.floor(saved.word_index / #result.words * 100)
-        UIManager:show(ConfirmBox:new{
-            text        = string.format(_("Resume from %d%%?"), pct),
-            ok_text     = _("Resume"),
-            cancel_text = _("From beginning"),
-            ok_callback = function()
-                engine.current_idx = math.min(saved.word_index, #result.words)
-                self:_startReading(engine, file_path)
-            end,
-            cancel_callback = function()
-                self:_startReading(engine, file_path)
-            end,
-        })
-    else
-        self:_startReading(engine, file_path)
     end
 end
 
 function LibraryScreen:_startReading(engine, file_path)
     local mode = self.settings:get("reading_mode")
-    local ScreenClass = (mode == "scroll")
-        and require("modules/ui/scroll_screen")
-        or  require("modules/ui/rsvp_screen")
+    local ok_sc, ScreenClass
+    if mode == "scroll" then
+        ok_sc, ScreenClass = pcall(require, "modules/ui/scroll_screen")
+    else
+        ok_sc, ScreenClass = pcall(require, "modules/ui/rsvp_screen")
+    end
+    if not ok_sc then
+        UIManager:show(InfoMessage:new{
+            text    = "FlowRead: failed to load reading screen.\n" .. tostring(ScreenClass),
+            timeout = 5,
+        })
+        return
+    end
     UIManager:show(ScreenClass:new{
         engine    = engine,
         settings  = self.settings,

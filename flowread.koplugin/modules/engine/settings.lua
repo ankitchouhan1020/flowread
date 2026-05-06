@@ -33,11 +33,24 @@ local DEFAULTS = {
     letter_spacing       = 0,           -- -4 .. +12 in steps of 2
 
     -- Library
-    books_path           = "/sdcard/Books",
+    -- Overridden at runtime by Settings:new() based on detected device mount point
+    books_path           = "/mnt/us/books",
 }
 
 local Settings = {}
 Settings.__index = Settings
+
+local function detectBooksPath()
+    local lfs = require("libs/libkoreader-lfs")
+    -- Kindle native jailbreak mount
+    if lfs.attributes("/mnt/us") then return "/mnt/us/books" end
+    -- Android / Kobo / PocketBook via KOReader home_dir
+    local ok, Device = pcall(require, "device")
+    if ok and Device.home_dir and Device.home_dir ~= "" then
+        return Device.home_dir .. "/books"
+    end
+    return "/sdcard/books"
+end
 
 function Settings:new()
     local o = setmetatable({}, self)
@@ -50,6 +63,7 @@ end
 function Settings:get(key)
     local v = self._store:readSetting(key)
     if v == nil then
+        if key == "books_path" then return detectBooksPath() end
         return DEFAULTS[key]
     end
     return v
