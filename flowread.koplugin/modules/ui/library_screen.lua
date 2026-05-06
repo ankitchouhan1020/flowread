@@ -327,7 +327,7 @@ function LibraryScreen:_openStartSelector(engine, file_path)
         mandatory = "0%",
         callback = function() startAt(1) end,
     })
-    for _, pct in ipairs({10, 25, 50, 75}) do
+    for __, pct in ipairs({10, 25, 50, 75}) do
         local idx = math.max(1, math.floor(#engine.words * pct / 100))
         table.insert(items, {
             text = string.format(_("%d%%"), pct),
