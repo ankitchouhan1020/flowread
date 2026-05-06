@@ -127,6 +127,7 @@ end
 
 function RSVPScreen:onShow()
     UIManager:setDirty(self, "full")
+    self:_startPlayback()
 end
 
 -- ── Rendering ──────────────────────────────────────────────────────────────
@@ -472,9 +473,7 @@ function RSVPScreen:_onWordTimer()
 end
 
 function RSVPScreen:_setDirty(mode)
-    UIManager:setDirty(self, function()
-        return mode or "partial", self.dimen
-    end)
+    UIManager:setDirty(self, mode or "partial")
 end
 
 function RSVPScreen:_savePosition()
@@ -563,9 +562,8 @@ function RSVPScreen:onHoldRelease(ges)
     local function openSettings()
         local SettingsPanel = require("modules/ui/settings_panel")
         UIManager:show(SettingsPanel:new{
-            settings       = self_ref.settings,
-            refresh_parent = function()
-                -- Rebuild render cache and propagate pacing toggles to engine
+            settings = self_ref.settings,
+            on_close = function()
                 self_ref:_initColors()
                 self_ref.engine:refreshSettingsCache(self_ref._rc)
                 self_ref:_setDirty("full")
@@ -621,6 +619,8 @@ end
 
 -- Hardware back key
 function RSVPScreen:onClose()
+    if self._closed then return true end
+    self._closed = true
     self:_stopPlayback()
     self:_savePosition()
     UIManager:close(self)
