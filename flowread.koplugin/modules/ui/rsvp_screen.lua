@@ -8,25 +8,23 @@ can issue a "partial" dirty rect, keeping e-ink ghosting minimal.
 
 Layout (portrait or landscape):
   ┌──────────────────────────────────────────┐
-  │  [WPM: 250]            [Book title]      │  ← 28px status bar
-  │                                          │
-  │                                          │
-  │   [prev]   p r [E] s s u r e   [next]   │  ← word centred on ORP
-  │                  ↑ anchor                │
-  │                                          │
-  │  ████████████████░░░░░░░░░░░  34% · 8m  │  ← 22px progress bar
+  │  Settings   Play / WPM      Exit          │  ← header (tap left / right)
+  │  (book title)                             │
+  │   [phantom]  w o r d  [phantom]          │  ← ORP; tap: play/pause
+  │  Slower   Browse   Faster                │  ← tap row (no hardware keys)
+  │  ████████████░░░░░░░░░░░  34% · 8m       │  ← progress
   └──────────────────────────────────────────┘
 
 Gesture map
-  Tap              → toggle play / pause
-  Double-tap       → lock autoplay (same as "play, don't stop on sentence")
-  Tap left 10%     → rewind to start of sentence
-  Swipe north      → WPM +10
-  Swipe south      → WPM −10
-  Swipe east       → scrub forward
-  Swipe west       → scrub backward
-  Long-press       → open settings panel
-  Hardware back    → save position & close
+  Tap (main area)  → play / pause
+  Tap header left  → settings
+  Tap header right → exit
+  Tap bottom row   → slower WPM | browse words | faster WPM (touch-only friendly)
+  Double-tap       → exit
+  Swipe north/south → WPM ±10 (optional; same as bottom row)
+  Swipe east/west  → when playing: jump words; when paused: open browse (optional)
+  Long-press       → settings
+  Hardware back    → save position & close (if device has keys)
 --]]
 
 local ok_input, InputContainer = pcall(require, "ui/widget/container/inputcontainer")
@@ -68,8 +66,10 @@ end
 local AUTOSAVE_EVERY = 15
 
 -- Status-bar and progress-bar heights in pixels
-local STATUS_H   = 28
+local STATUS_H   = 44
 local PROGRESS_H = 22
+--- Bottom strip: WPM / browse (tap targets for devices with no hardware keys)
+local BOTTOM_CONTROLS_H = math.max(32, Screen:scaleBySize(36))
 -- Gap between the progress bar and the screen bottom
 local BOTTOM_PAD = 4
 
@@ -130,7 +130,6 @@ end
 
 function RSVPScreen:onShow()
     UIManager:setDirty(self, "full")
-    self:_startPlayback()
 end
 
 -- ── Rendering ──────────────────────────────────────────────────────────────
@@ -155,42 +154,59 @@ function RSVPScreen:paintTo(bb, x, y)
     local word_info = self.engine:currentWordInfo()
     if word_info then
         local area_y_top = STATUS_H + 1
-        local area_h = H - STATUS_H - 1 - PROGRESS_H - BOTTOM_PAD - 1
+        local area_h = H - STATUS_H - 1 - BOTTOM_CONTROLS_H - PROGRESS_H - BOTTOM_PAD - 1
         self:_paintWord(bb, W, area_y_top, area_h, word_info)
     end
 
-    -- Horizontal rule above progress bar
-    local prog_y = H - PROGRESS_H - BOTTOM_PAD
+    local controls_top = H - BOTTOM_PAD - PROGRESS_H - BOTTOM_CONTROLS_H
+    local prog_y       = H - BOTTOM_PAD - PROGRESS_H
+    bb:paintRect(0, controls_top - 1, W, 1, self.dim_color)
+    self:_paintBottomControls(bb, W, controls_top)
     bb:paintRect(0, prog_y - 1, W, 1, self.dim_color)
 
     -- Progress bar
     self:_paintProgress(bb, W, prog_y, word_info)
 end
 
+function RSVPScreen:_paintBottomControls(bb, W, controls_top)
+    local face = self._rc.prog_face
+    local labels = { _("Slower"), _("Browse"), _("Faster") }
+    local y_mid = controls_top + math.floor(BOTTOM_CONTROLS_H * 0.62)
+    local col_w = math.floor(W / 3)
+    for i, label in ipairs(labels) do
+        local lw = RenderText:sizeUtf8Text(0, W, face, label, true, false).x
+        local cx = (i - 1) * col_w + math.floor(col_w / 2) - math.floor(lw / 2)
+        RenderText:renderUtf8Text(bb, cx, y_mid, face, label, true, false, self.accent_color)
+    end
+end
+
 function RSVPScreen:_paintStatus(bb, W)
     local face = self._rc.ui_face
-    local label
-    if self.is_playing then
-        label = ">  " .. self.engine.wpm .. " WPM  Tap pause"
-    else
-        label = "Paused  Tap play  Hold settings"
-    end
+    local left_label = _("Settings")
+    local right_label = _("Exit")
+    local state_label = (self.is_playing and ">  " or "||  ") .. self.engine.wpm .. " WPM"
 
-    RenderText:renderUtf8Text(bb, 8, STATUS_H - 5, face, label,
-        true, false, self.dim_color)
+    RenderText:renderUtf8Text(bb, 8, 20, face, left_label, true, false, self.fg_color)
 
-    -- Right side: current chapter title if available, else file name
-    local right_label
+    local state_w = RenderText:sizeUtf8Text(0, W, face, state_label, true, false).x
+    RenderText:renderUtf8Text(bb, math.floor((W - state_w) / 2), 20, face, state_label,
+        true, false, self.fg_color)
+
+    local right_w = RenderText:sizeUtf8Text(0, W, face, right_label, true, false).x
+    RenderText:renderUtf8Text(bb, W - right_w - 8, 20, face, right_label,
+        true, false, self.fg_color)
+
+    local book_label
     local ch = self.engine:currentChapter()
     if ch then
-        right_label = ch.title
+        book_label = ch.title
     else
-        right_label = self.file_path:match("[^/]+$") or ""
+        book_label = self.file_path:match("[^/]+$") or ""
     end
-    if #right_label > 32 then right_label = right_label:sub(1, 29) .. "..." end
-    local rl_w = RenderText:sizeUtf8Text(0, W, face, right_label, true, false).x
-    RenderText:renderUtf8Text(bb, W - rl_w - 8, STATUS_H - 5, face, right_label,
-        true, false, self.dim_color)
+    if #book_label > 42 then book_label = book_label:sub(1, 39) .. "..." end
+    local book_w = RenderText:sizeUtf8Text(0, W, face, book_label, true, false).x
+    RenderText:renderUtf8Text(bb, math.floor((W - book_w) / 2), STATUS_H - 5,
+        face, book_label, true, false, self.dim_color)
 end
 
 function RSVPScreen:_paintWord(bb, W, area_y, area_h, word_info)
@@ -301,27 +317,28 @@ function RSVPScreen:_paintProgress(bb, W, bar_y, word_info)
     -- Progress fraction
     local frac = self.engine:progress()
 
-    -- Bar geometry: leave room for the text label on the right
+    -- Bar geometry: leave room for the progress label on the right
     local label = string.format("%d%%  %dm", math.floor(frac * 100),
                                 math.ceil(self.engine:minutesRemaining()))
     local label_w = RenderText:sizeUtf8Text(0, W, face, label, true, false).x
     local bar_w   = W - label_w - 20
-    local bar_h   = PROGRESS_H - 6
+    local bar_h   = 5
     local bar_x   = 8
 
     -- Track
-    bb:paintRect(bar_x, bar_y + 3, bar_w, bar_h, self.dim_color)
+    bb:paintRect(bar_x, bar_y + 2, bar_w, bar_h, self.dim_color)
     -- Fill
     local fill_w = math.floor(bar_w * frac)
     if fill_w > 0 then
-        bb:paintRect(bar_x, bar_y + 3, fill_w, bar_h, self.fg_color)
+        bb:paintRect(bar_x, bar_y + 2, fill_w, bar_h, self.fg_color)
     end
 
     -- Label
     local label_x = W - label_w - 8
-    local text_y  = bar_y + PROGRESS_H - 4
+    local text_y  = bar_y + 12
     RenderText:renderUtf8Text(bb, label_x, text_y, face, label,
         true, false, self.fg_color)
+
 end
 
 -- ── Typography helpers ─────────────────────────────────────────────────────
@@ -502,11 +519,12 @@ end
 
 function RSVPScreen:_wordRegion()
     local margin = math.floor(self.dimen.h * 0.18)
+    local bottom_reserved = PROGRESS_H + BOTTOM_PAD + BOTTOM_CONTROLS_H
     return Geom:new{
         x = 0,
         y = STATUS_H + margin,
         w = self.dimen.w,
-        h = math.max(80, self.dimen.h - STATUS_H - PROGRESS_H - BOTTOM_PAD - margin * 2),
+        h = math.max(80, self.dimen.h - STATUS_H - bottom_reserved - margin * 2),
     }
 end
 
@@ -526,6 +544,34 @@ end
 function RSVPScreen:onTap(_, ges)
     if not ges or not ges.pos then return true end
 
+    if ges.pos.y <= STATUS_H then
+        if ges.pos.x <= math.floor(self.dimen.w * 0.34) then
+            self:_openSettings()
+            return true
+        elseif ges.pos.x >= math.floor(self.dimen.w * 0.66) then
+            self:onClose()
+            return true
+        end
+        return true
+    end
+
+    local H = self.dimen.h
+    local W = self.dimen.w
+    local controls_top = H - BOTTOM_PAD - PROGRESS_H - BOTTOM_CONTROLS_H
+    local prog_y = H - BOTTOM_PAD - PROGRESS_H
+    if ges.pos.y >= controls_top and ges.pos.y < prog_y then
+        if ges.pos.x <= math.floor(W * 0.34) then
+            self.engine:decreaseWPM(10)
+            self:_setDirty("ui")
+        elseif ges.pos.x >= math.floor(W * 0.66) then
+            self.engine:increaseWPM(10)
+            self:_setDirty("ui")
+        else
+            self:_openScrubPreview()
+        end
+        return true
+    end
+
     -- Kindle-first behavior: tap anywhere immediately toggles playback.
     if self.is_playing then
         self:_stopPlayback()
@@ -537,19 +583,7 @@ function RSVPScreen:onTap(_, ges)
 end
 
 function RSVPScreen:onDoubleTap(_, ges)
-    if self.is_locked then
-        -- Unlock: stop at sentence end
-        self:_pauseAtSentenceEnd()
-        self.is_locked = false
-    else
-        -- Lock autoplay: play continuously without pausing on sentences
-        self.is_locked = true
-        self._pause_at_sentence = false
-        if not self.is_playing then
-            self:_startPlayback()
-        end
-    end
-    self:_setDirty("ui")
+    self:onClose()
     return true
 end
 
@@ -564,13 +598,7 @@ function RSVPScreen:onSwipe(_, ges)
         self:_setDirty("ui")
     elseif dir == "east" or dir == "west" then
         if not self.is_playing then
-            -- Paused: open the hold-and-browse scrub preview
-            local ScrubPreview = require("modules/ui/scrub_preview")
-            UIManager:show(ScrubPreview:new{
-                engine   = self.engine,
-                settings = self.settings,
-                on_close = function() self:_setDirty("full") end,
-            })
+            self:_openScrubPreview()
         else
             -- Playing: immediate word-jump (no preview disruption)
             if dir == "east" then self.engine:scrubForward()
@@ -582,10 +610,13 @@ function RSVPScreen:onSwipe(_, ges)
 end
 
 function RSVPScreen:onHoldRelease(_, ges)
+    self:_openSettings()
+    return true
+end
+
+function RSVPScreen:_openSettings()
     if self.is_playing then self:_stopPlayback() end
     local self_ref = self
-
-    -- Kindle-stable path: avoid stacked button dialogs over the RSVP timer.
     local SettingsPanel = require("modules/ui/settings_panel")
     UIManager:show(SettingsPanel:new{
         settings = self_ref.settings,
@@ -595,7 +626,19 @@ function RSVPScreen:onHoldRelease(_, ges)
             self_ref:_setDirty("full")
         end,
     })
-    return true
+end
+
+function RSVPScreen:_openScrubPreview()
+    if self.is_playing then self:_stopPlayback() end
+    local self_ref = self
+    local ScrubPreview = require("modules/ui/scrub_preview")
+    UIManager:show(ScrubPreview:new{
+        engine   = self_ref.engine,
+        settings = self_ref.settings,
+        on_close = function()
+            self_ref:_setDirty("full")
+        end,
+    })
 end
 
 -- Hardware back key

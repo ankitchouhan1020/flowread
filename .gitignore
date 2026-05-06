@@ -6,3 +6,6 @@
 # KOReader/user runtime state
 *.sdr/
 settings/
+
+# Local release artifacts
+flowread.koplugin.zip

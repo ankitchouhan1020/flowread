@@ -102,9 +102,11 @@ local LibraryScreen = InputContainer:extend{
 }
 
 function LibraryScreen:init()
-    self.key_events = {
-        Close = { { "Back" }, doc = "close FlowRead" },
-    }
+    if Device:hasKeys() then
+        self.key_events = {
+            Close = { { "Back" }, doc = "close FlowRead" },
+        }
+    end
     self:_buildUI()
 end
 
@@ -294,22 +296,24 @@ function LibraryScreen:_openStartSelector(engine, file_path)
     local Menu = require("ui/widget/menu")
     local selector
 
-    local function previewText(start_idx)
-        local out = {}
-        local stop = math.min(#engine.words, start_idx + 13)
-        for i = start_idx, stop do
-            out[#out + 1] = engine.words[i]
-        end
-        local text = table.concat(out, " ")
-        if #text > 52 then text = text:sub(1, 49) .. "..." end
-        return text
-    end
-
     local function startAt(idx)
         engine:seekTo(idx)
-        UIManager:close(self)
         if selector then UIManager:close(selector) end
         self:_startReading(engine, file_path)
+    end
+
+    local function chooseWordAt(idx)
+        engine:seekTo(idx)
+        local ScrubPreview = require("modules/ui/scrub_preview")
+        UIManager:show(ScrubPreview:new{
+            engine      = engine,
+            settings    = self.settings,
+            select_mode = true,
+            on_select   = function()
+                if selector then UIManager:close(selector) end
+                self:_startReading(engine, file_path)
+            end,
+        })
     end
 
     local items = {}
@@ -327,22 +331,22 @@ function LibraryScreen:_openStartSelector(engine, file_path)
         mandatory = "0%",
         callback = function() startAt(1) end,
     })
-    for __, pct in ipairs({10, 25, 50, 75}) do
-        local idx = math.max(1, math.floor(#engine.words * pct / 100))
-        table.insert(items, {
-            text = string.format(_("%d%%"), pct) .. "  " .. previewText(idx),
-            mandatory = "",
-            callback = function() startAt(idx) end,
-        })
-    end
+    table.insert(items, {
+        text = _("Choose exact word"),
+        mandatory = _("Browse"),
+        callback = function()
+            local saved = self.settings:getPosition(file_path)
+            chooseWordAt(saved and saved.word_index or 1)
+        end,
+    })
     if engine.chapters and #engine.chapters > 0 then
-        local limit = math.min(#engine.chapters, 8)
-        for i = 1, limit do
-            local ch = engine.chapters[i]
+        for i, ch in ipairs(engine.chapters) do
+            local title = ch.title or string.format(_("Chapter %d"), i)
+            if #title > 42 then title = title:sub(1, 39) .. "..." end
             table.insert(items, {
-                text = ch.title or string.format(_("Chapter %d"), i),
-                mandatory = _("Chapter"),
-                callback = function() startAt(ch.start_idx) end,
+                text = title,
+                mandatory = tostring(i),
+                callback = function() chooseWordAt(ch.start_idx) end,
             })
         end
     end
@@ -358,13 +362,7 @@ function LibraryScreen:_openStartSelector(engine, file_path)
 end
 
 function LibraryScreen:_startReading(engine, file_path)
-    local mode = self.settings:get("reading_mode")
-    local ok_sc, ScreenClass
-    if mode == "scroll" then
-        ok_sc, ScreenClass = pcall(require, "modules/ui/scroll_screen")
-    else
-        ok_sc, ScreenClass = pcall(require, "modules/ui/rsvp_screen")
-    end
+    local ok_sc, ScreenClass = pcall(require, "modules/ui/rsvp_screen")
     if not ok_sc then
         UIManager:show(InfoMessage:new{
             text    = "FlowRead: failed to load reading screen.\n" .. tostring(ScreenClass),

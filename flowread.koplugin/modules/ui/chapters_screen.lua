@@ -18,11 +18,7 @@ local ChaptersScreen = Menu:extend{
     is_borderless    = false,
 }
 
-function ChaptersScreen:init(o)
-    o = o or {}
-    self.engine    = o.engine
-    self.on_return = o.on_return   -- callback(chapter_n) after seek
-
+function ChaptersScreen:init()
     self.title  = _("Chapters")
     self.width  = Screen:getWidth()
     self.height = Screen:getHeight()
@@ -37,7 +33,7 @@ function ChaptersScreen:_buildItems()
     local items    = {}
 
     -- Current chapter (for marking)
-    local _, current_n = engine:currentChapter()
+    local current_chapter, current_n = engine:currentChapter()
 
     for n, ch in ipairs(chapters) do
         local is_current = (n == current_n)
@@ -58,8 +54,10 @@ function ChaptersScreen:_buildItems()
         if is_current then mandatory = "-> " .. mandatory end
 
         local chapter_n = n  -- capture for closure
+        local title = ch.title or string.format(_("Chapter %d"), n)
+        if #title > 42 then title = title:sub(1, 39) .. "..." end
         table.insert(items, {
-            text      = ch.title,
+            text      = title,
             mandatory = mandatory,
             callback  = function()
                 engine:jumpToChapter(chapter_n)
@@ -81,6 +79,8 @@ function ChaptersScreen:_buildItems()
 end
 
 function ChaptersScreen:onReturn()
+    if self._closed then return true end
+    self._closed = true
     UIManager:close(self)
     return true
 end

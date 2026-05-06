@@ -6,10 +6,11 @@ RSVP mode. Shows ~9 lines of text centred on the current word so the reader
 can quickly browse forward/backward before returning to RSVP playback.
 
 Gesture map:
-  hold               → enter continuous-scroll mode
-  pan (while held)   → update finger Y, adjusting scroll direction + speed
-  hold_release       → stop scrolling (preview stays open at new position)
-  tap                → close preview; RSVP resumes at the current position
+  tap word           → select that word as current/start position
+  tap left footer    → previous page
+  tap centre footer  → return to RSVP/start selector
+  tap right footer   → next page
+  hardware Back      → return to RSVP
   hardware Back      → same as tap
 --]]
 
@@ -31,14 +32,11 @@ local _              = require("gettext")
 local FONT_MAP = { small = 16, medium = 20, large = 26 }
 local MARGIN       = 10
 -- Reduced from 250 to 80: enough for ~12 visible lines at 20pt on 600px wide
--- screen, while cutting the scan window from 500 to 160 words per scroll tick.
+-- screen, while cutting the scan window from 500 to 160 words per page.
 local CONTEXT_WORDS = 80
 local ANCHOR_FRAC  = 0.42
 local LINE_GAP     = 1.65
--- Dead-zone near screen centre (fraction of half-height) where scroll stops
-local DEAD_ZONE    = 0.12
--- Maximum words-per-step at the screen edge
-local MAX_STEP     = 10
+local PAGE_WORDS    = 80
 
 -- Re-use typography helpers from RSVPScreen and the shared layout cache.
 local RSVPScreen = require("modules/ui/rsvp_screen")
@@ -51,12 +49,7 @@ local ScrubPreview = InputContainer:extend{
 -- ── Lifecycle ────────────────────────────────────────────────────────────────
 
 function ScrubPreview:init()
-    -- self.engine, self.settings, self.on_close already set by new{...}
-
-    self._scrolling = false
-    self._scroll_y  = Screen:getHeight() / 2
-    -- Stable closure reference for UIManager:unschedule
-    self._scrollFn  = function() self:_scrollLoop() end
+    -- self.engine, self.settings, self.on_close, self.on_select already set by new{...}
 
     local sw = Screen:getWidth()
     local sh = Screen:getHeight()
@@ -67,15 +60,6 @@ function ScrubPreview:init()
     self.ges_events = {
         Tap = {
             GestureRange:new{ ges = "tap", range = self.dimen }
-        },
-        Hold = {
-            GestureRange:new{ ges = "hold", range = self.dimen }
-        },
-        HoldRelease = {
-            GestureRange:new{ ges = "hold_release", range = self.dimen }
-        },
-        Pan = {
-            GestureRange:new{ ges = "pan", range = self.dimen }
         },
     }
 
@@ -145,29 +129,41 @@ function ScrubPreview:paintTo(bb, x, y)
     local H = self.dimen.h
 
     bb:fill(self.bg_color)
+    self._word_hits = {}
 
-    -- Header bar: "Browse  word X / total" hint
-    local STATUS_H = 28
+    -- Header bar
+    local STATUS_H = 36
     local info  = self.engine:currentWordInfo()
-    local ch, _ = self.engine:currentChapter()
-    local hint  = ch and ch.title or _("Scrub Preview")
+    local ch, current_n = self.engine:currentChapter()
+    local hint  = self.select_mode and _("Select start word")
+               or (ch and ch.title or _("Scrub Preview"))
     local pos_str = info and string.format("%d / %d", info.index, info.total) or ""
 
     local hface = self._preview_hface
-    RenderText:renderUtf8Text(bb, 8, STATUS_H - 5, hface, hint,
+    RenderText:renderUtf8Text(bb, 8, 22, hface, _("Back"),
+        true, false, self.fg_color)
+    if #hint > 34 then hint = hint:sub(1, 31) .. "..." end
+    local hint_w = RenderText:sizeUtf8Text(0, W, hface, hint, true, false).x
+    RenderText:renderUtf8Text(bb, math.floor((W - hint_w) / 2), 22, hface, hint,
         true, false, self.dim_color)
     local ps_w = RenderText:sizeUtf8Text(0, W, hface, pos_str, true, false).x
-    RenderText:renderUtf8Text(bb, W - ps_w - 8, STATUS_H - 5, hface, pos_str,
+    RenderText:renderUtf8Text(bb, W - ps_w - 8, 22, hface, pos_str,
         true, false, self.dim_color)
     bb:paintRect(0, STATUS_H, W, 1, self.dim_color)
 
-    -- Scroll hint footer
-    local FOOTER_H = 24
-    local ftip = _("Tap to return  |  Hold + drag to browse")
-    local ftip_w = RenderText:sizeUtf8Text(0, W, hface, ftip, true, false).x
+    -- Paginated footer
+    local FOOTER_H = 32
     bb:paintRect(0, H - FOOTER_H - 1, W, 1, self.dim_color)
-    RenderText:renderUtf8Text(bb, math.floor((W - ftip_w) / 2),
-        H - 6, hface, ftip, true, false, self.dim_color)
+    RenderText:renderUtf8Text(bb, 8, H - 9, hface, _("Prev"),
+        true, false, self.fg_color)
+    local return_text = self.select_mode and _("Back") or _("Return")
+    local return_w = RenderText:sizeUtf8Text(0, W, hface, return_text, true, false).x
+    RenderText:renderUtf8Text(bb, math.floor((W - return_w) / 2), H - 9,
+        hface, return_text, true, false, self.fg_color)
+    local next_text = _("Next")
+    local next_w = RenderText:sizeUtf8Text(0, W, hface, next_text, true, false).x
+    RenderText:renderUtf8Text(bb, W - next_w - 8, H - 9,
+        hface, next_text, true, false, self.fg_color)
 
     -- Text area between header and footer
     local area_y = STATUS_H + 1
@@ -204,8 +200,15 @@ function ScrubPreview:_paintTextArea(bb, W, area_y, area_h)
         local baseline = anchor_baseline + rel * line_h
         if baseline > area_y + font_pt and baseline < area_y + area_h then
             local is_cur_line = (li == cur_line_idx)
-            for _, wd in ipairs(line.words) do
+            for __, wd in ipairs(line.words) do
                 local is_cur = (wd.idx == current)
+                table.insert(self._word_hits, {
+                    idx = wd.idx,
+                    x = wd.x_start,
+                    y = baseline - font_pt,
+                    w = math.max(1, wd.width),
+                    h = math.floor(line_h * 0.95),
+                })
 
                 if is_cur and is_cur_line then
                     -- ORP highlight on the current word
@@ -265,29 +268,28 @@ ScrubPreview._renderTrackedText  = RSVPScreen._renderTrackedText
 -- ── Gesture handlers ─────────────────────────────────────────────────────────
 
 function ScrubPreview:onTap(_, ges)
-    self:_close()
-    return true
-end
-
-function ScrubPreview:onHold(_, ges)
     if not ges or not ges.pos then return true end
-    self._scroll_y  = ges.pos.y
-    self._scrolling = true
-    UIManager:scheduleIn(0.05, self._scrollFn)
-    return true
-end
+    local x = ges.pos.x
+    local y = ges.pos.y
+    local W = self.dimen.w
+    local H = self.dimen.h
 
-function ScrubPreview:onPan(_, ges)
-    -- Update the reference y so _scrollLoop picks up the new position
-    if ges and ges.pos then
-        self._scroll_y = ges.pos.y
+    if y <= 36 and x <= math.floor(W * 0.33) then
+        self:_close()
+    elseif y >= H - 40 then
+        if x <= math.floor(W * 0.33) then
+            self:_page(-1)
+        elseif x >= math.floor(W * 0.66) then
+            self:_page(1)
+        else
+            self:_close()
+        end
+    else
+        local idx = self:_wordAt(x, y)
+        if idx then
+            self:_selectWord(idx)
+        end
     end
-    return true
-end
-
-function ScrubPreview:onHoldRelease(_, ges)
-    self._scrolling = false
-    UIManager:unschedule(self._scrollFn)
     return true
 end
 
@@ -297,48 +299,39 @@ function ScrubPreview:onClose()
 end
 ScrubPreview.onBack = ScrubPreview.onClose
 
--- ── Continuous scroll loop ───────────────────────────────────────────────────
+-- ── Page navigation ──────────────────────────────────────────────────────────
 
-function ScrubPreview:_scrollLoop()
-    if not self._scrolling then return end
+function ScrubPreview:_page(direction)
+    self.engine:seekTo(self.engine.current_idx + direction * PAGE_WORDS)
+    UIManager:setDirty(self, "ui")
+end
 
-    local H         = self.dimen.h
-    local center_y  = H / 2
-    local dy        = self._scroll_y - center_y
-    local half_h    = H / 2
-    -- Normalised distance from centre: 0 (centre) → 1 (edge)
-    local norm      = math.abs(dy) / half_h
-
-    if norm < DEAD_ZONE then
-        -- Inside dead zone: don't scroll, wait
-        UIManager:scheduleIn(0.2, self._scrollFn)
-        return
+function ScrubPreview:_wordAt(x, y)
+    for __, hit in ipairs(self._word_hits or {}) do
+        if x >= hit.x and x <= hit.x + hit.w and y >= hit.y and y <= hit.y + hit.h then
+            return hit.idx
+        end
     end
+end
 
-    -- Map norm (DEAD_ZONE..1) → step (1..MAX_STEP)
-    local adjusted = (norm - DEAD_ZONE) / (1 - DEAD_ZONE)
-    local step     = math.max(1, math.floor(adjusted * MAX_STEP))
-
-    if dy < 0 then
-        self.engine:seekTo(self.engine.current_idx - step)
+function ScrubPreview:_selectWord(idx)
+    self.engine:seekTo(idx)
+    if self.on_select then
+        if not self._closed then
+            self._closed = true
+            UIManager:close(self)
+        end
+        self.on_select(idx)
     else
-        self.engine:seekTo(self.engine.current_idx + step)
+        self:_close()
     end
-
-    UIManager:setDirty(self, function()
-        return "partial", self.dimen
-    end)
-
-    -- Faster delay when farther from centre
-    local delay = math.max(0.05, 0.35 - adjusted * 0.30)
-    UIManager:scheduleIn(delay, self._scrollFn)
 end
 
 -- ── Close ────────────────────────────────────────────────────────────────────
 
 function ScrubPreview:_close()
-    self._scrolling = false
-    UIManager:unschedule(self._scrollFn)
+    if self._closed then return end
+    self._closed = true
     UIManager:close(self)
     if self.on_close then self.on_close() end
 end

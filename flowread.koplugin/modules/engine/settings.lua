@@ -66,6 +66,11 @@ function Settings:get(key)
         if key == "books_path" then return detectBooksPath() end
         return DEFAULTS[key]
     end
+    -- Scroll mode is disabled on Kindle stabilization builds; force RSVP even
+    -- if an older saved setting still says "scroll".
+    if key == "reading_mode" and v == "scroll" then
+        return "rsvp"
+    end
     return v
 end
 

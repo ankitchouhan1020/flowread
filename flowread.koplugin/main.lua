@@ -100,13 +100,7 @@ function FlowReadPlugin:openBook(file_path)
         engine.current_idx = math.min(saved.word_index, #result.words)
     end
 
-    local mode = settings:get("reading_mode")
-    local ok_sc, ScreenClass
-    if mode == "scroll" then
-        ok_sc, ScreenClass = pcall(require, "modules/ui/scroll_screen")
-    else
-        ok_sc, ScreenClass = pcall(require, "modules/ui/rsvp_screen")
-    end
+    local ok_sc, ScreenClass = pcall(require, "modules/ui/rsvp_screen")
     if not ok_sc then
         local InfoMessage = require("ui/widget/infomessage")
         UIManager:show(InfoMessage:new{

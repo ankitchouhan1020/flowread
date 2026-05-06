@@ -174,7 +174,7 @@ function ScrollScreen:_paintScrollLine(bb, line, baseline, is_cur_line)
     local style       = rc.style
     local current_idx = self.engine.current_idx
 
-    for _, wd in ipairs(line.words) do
+    for __, wd in ipairs(line.words) do
         local is_cur_word = (wd.idx == current_idx)
 
         if is_cur_word and is_cur_line then
