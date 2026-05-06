@@ -26,6 +26,20 @@ local SENTENCE_END_PAT = "[%.!%?][\"')%]]*$"
 local CLAUSE_BREAK_PAT = "[,;:][\"')%]]*$"
 local SCRUB_WORDS      = 50
 
+--- Optimal recognition point: **1-based character index** by word length (byte length `#word`).
+--- Pattern matches common RSVP/Spritz-style tables: ORP advances one step every three letters
+--- from length 3 onward (lengths 3–5 → 2, 6–8 → 3, 9–11 → 4, …), slightly left of centre.
+--- Long words beyond the table use the same closed form.
+local MAX_ORP_TABLE_LEN = 80
+local ORP_BY_LEN = {}
+for n = 1, MAX_ORP_TABLE_LEN do
+    if n <= 2 then
+        ORP_BY_LEN[n] = 1
+    else
+        ORP_BY_LEN[n] = 2 + math.floor((n - 3) / 3)
+    end
+end
+
 -- ── Constructor ──────────────────────────────────────────────────────────────
 
 ---@param o table  { words = string[], chapters = table[], settings = Settings }
@@ -211,10 +225,18 @@ end
 
 -- ── Internal helpers ─────────────────────────────────────────────────────────
 
+---1-based ORP index (RSVP focus letter). Index is in **Lua byte positions** (`string.sub`),
+---so ASCII words line up with “letters”; UTF-8 multi-byte characters use multiple bytes.
 function RSVPEngine:_orpIndex(word)
     if not word or #word == 0 then return 1 end
-    local idx = math.max(1, math.floor(#word * 0.3))
-    return math.min(idx, #word)
+    local n = #word
+    if n <= MAX_ORP_TABLE_LEN then
+        return ORP_BY_LEN[n]
+    end
+    local idx = 2 + math.floor((n - 3) / 3)
+    if idx > n then return n end
+    if idx < 1 then return 1 end
+    return idx
 end
 
 function RSVPEngine:_estimateSyllables(word)

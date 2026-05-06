@@ -10,7 +10,7 @@ Layout (portrait or landscape):
   ┌──────────────────────────────────────────┐
   │  Settings   Play / WPM      Exit          │  ← header (tap left / right)
   │  (book title)                             │
-  │   [phantom]  w o r d  [phantom]          │  ← ORP; tap: play/pause
+  │   [phantom]  w o r d  [phantom]          │  ← ORP at fixed pivot (anchor %); tap: play/pause
   │  Slower   Browse   Faster                │  ← tap row (no hardware keys)
   │  ████████████░░░░░░░░░░░  34% · 8m       │  ← progress
   └──────────────────────────────────────────┘
@@ -227,16 +227,19 @@ function RSVPScreen:_paintWord(bb, W, area_y, area_h, word_info)
     local suffix_w = self:_trackedTextWidth(face, suffix, tracking)
     local total_w  = prefix_w + orp_w + suffix_w
 
-    -- Keep the full word visually centered whenever it fits. This is much
-    -- steadier on Kindle than strict ORP anchoring for long words.
-    local word_left
-    if total_w <= W - 16 then
-        word_left = math.floor((W - total_w) / 2)
+    -- RSVP fixation: ORP letter center stays at a fixed horizontal pivot
+    -- (Settings → Anchor position). Layout clamps only at screen edges.
+    local MARGIN    = 8
+    local pivot_x   = math.floor(W * rc.anchor_ratio)
+    local orp_cw2   = math.floor(orp_w / 2)
+    local word_left = pivot_x - prefix_w - orp_cw2
+    local max_left  = W - MARGIN - total_w
+    local min_left  = MARGIN
+    if max_left < min_left then
+        -- Word wider than usable width: keep pivot best-effort.
+        word_left = math.max(max_left, math.min(min_left, word_left))
     else
-        -- Too wide for screen: keep ORP close to center while clipping equally.
-        local desired_orp_center = math.floor(W * 0.50)
-        word_left = desired_orp_center - prefix_w - math.floor(orp_w / 2)
-        word_left = math.min(8, math.max(W - total_w - 8, word_left))
+        word_left = math.max(min_left, math.min(max_left, word_left))
     end
     local anchor_x = word_left + prefix_w
 
